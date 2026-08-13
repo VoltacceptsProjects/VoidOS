@@ -12,94 +12,40 @@
 #define PS2_STATUS_INPUT_FULL  0x02 /* set: controller hasn't consumed our last command/data byte yet */
 #define PS2_STATUS_AUX_DATA    0x20 /* set: the waiting byte came from the mouse, not the keyboard */
 
-/* Every PS/2 wait below is timeout-bounded (matching the pattern
- * disk.c already uses for ATA status polling) rather than a bare
- * while(){} spin. A controller or device that never responds - a
- * disconnected/absent mouse, a quirky emulator, firmware that behaves
- * slightly differently than real hardware - must never be able to hang
- * the whole boot before the shell ever gets drawn; it's far better to
- * fall through with an unresponsive mouse than to sit at a blank
- * background-colored screen forever. */
-#define PS2_TIMEOUT 100000
-
-static int wait_input_clear(void) {
-    for (uint32_t i = 0; i < PS2_TIMEOUT; i++) {
-        if (!(inb(PS2_STATUS_PORT) & PS2_STATUS_INPUT_FULL)) return 1;
+static void wait_input_clear(void) {
+    while (inb(PS2_STATUS_PORT) & PS2_STATUS_INPUT_FULL) {
     }
-    return 0;
 }
 
-static int wait_output_full(void) {
-    for (uint32_t i = 0; i < PS2_TIMEOUT; i++) {
-        if (inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL) return 1;
+static void wait_output_full(void) {
+    while (!(inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL)) {
     }
-    return 0;
 }
 
-/* Returns the byte read, or 0 (with no side effect beyond the wait) if
- * the controller never raised output-full within the timeout. 0 isn't
- * ambiguous with a real timeout for our purposes here: every caller
- * either only cares about PS2_ACK (which is never 0) or is reading the
- * best-effort config byte, where a timeout already means the
- * controller isn't behaving and further config attempts are moot. */
 static uint8_t read_data(void) {
-    if (!wait_output_full()) return 0;
+    wait_output_full();
     return inb(PS2_DATA_PORT);
 }
 
 static void write_cmd(uint8_t cmd) {
-    (void)wait_input_clear(); /* best-effort: write anyway even on timeout */
+    wait_input_clear();
     outb(PS2_CMD_PORT, cmd);
 }
 
 static void write_data(uint8_t val) {
-    (void)wait_input_clear();
+    wait_input_clear();
     outb(PS2_DATA_PORT, val);
 }
 
-#define PS2_ACK 0xFA
-
-/* Drains any byte(s) the controller already has queued up. Firmware can
- * leave a stray keyboard or (with USB legacy emulation) mouse byte
- * sitting in the output buffer before we ever touch the device; if we
- * don't clear that out first, the ack-read below can swallow the wrong
- * byte and leave the real ack to be picked up later by ps2_poll() as if
- * it were a movement packet - and since 0xFA has the "packet start" bit
- * set, mouse_feed_byte() happily accepts it, permanently shifting every
- * packet after it one byte out of phase. That single misread is what
- * turns into a cursor that never stops "trailing" and clicks that never
- * register: X/Y deltas and the button-state byte end up swapped. */
-static void flush_output_buffer(void) {
-    for (int i = 0; i < 64 && (inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL); i++) {
-        (void)inb(PS2_DATA_PORT);
-    }
-}
-
 /* Routes a byte to the mouse (0xD4 tells the controller "the next data
- * byte is for the auxiliary device") and waits for its 0xFA ack.
- * Unlike a bare read_data() this doesn't just trust that whatever comes
- * back first is the ack - it discards anything else (stray data bytes,
- * resend requests, ...) until the real ack shows up, so a byte that was
- * already in flight can't get mistaken for it and left to corrupt the
- * packet stream later. Bounded so a genuinely dead/absent mouse can't
- * hang boot. */
+ * byte is for the auxiliary device") and waits for its 0xFA ack. */
 static void mouse_send_command(uint8_t cmd) {
     write_cmd(0xD4);
     write_data(cmd);
-    for (int tries = 0; tries < 8; tries++) {
-        uint8_t b = read_data();
-        if (b == PS2_ACK) return;
-    }
+    read_data(); /* discard the 0xFA ack (or whatever came back) */
 }
 
 void ps2_init(void) {
-    /* Disable both ports first so nothing can inject a byte mid-setup,
-     * then flush whatever the firmware already left queued up (see
-     * flush_output_buffer() above for why this matters). */
-    write_cmd(0xAD); /* disable first port (keyboard) */
-    write_cmd(0xA7); /* disable second port (mouse) */
-    flush_output_buffer();
-
     /* Enable the auxiliary device port - firmware normally leaves it
      * disabled since most keyboards-only setups never touch it. */
     write_cmd(0xA8);
@@ -113,17 +59,8 @@ void ps2_init(void) {
     write_cmd(0x60); /* "write configuration byte" */
     write_data(config);
 
-    /* Re-enable the keyboard port we disabled above. */
-    write_cmd(0xAE);
-
     mouse_send_command(0xF6); /* set defaults */
     mouse_send_command(0xF4); /* enable data reporting (start streaming packets) */
-
-    /* Belt and suspenders: drop anything left over from negotiation
-     * (e.g. a resend byte counted against the retry budget above)
-     * so mouse_feed_byte() starts genuinely clean on the first real
-     * movement packet. */
-    flush_output_buffer();
 }
 
 void ps2_poll(void) {

@@ -196,3 +196,25 @@ void disk_print_info(void) {
         terminal_writestring(" sectors\n");
     }
 }
+
+/* Reports a single drive - the one VoidOS is actually running from
+ * (mounted VoidFS volume) or would install to - instead of every ATA
+ * position the controller happens to expose. A VM/PC can have several
+ * disks attached; the Files page only cares about VoidOS's own drive. */
+void disk_print_drive(unsigned int index) {
+    terminal_setcolor(VGA_LIGHT_CYAN, VGA_DARK_GREY);
+    terminal_writestring("Boot drive\n");
+    terminal_setcolor(VGA_LIGHT_GREY, VGA_DARK_GREY);
+    if (index >= disk_count_value) {
+        terminal_writestring("  No ATA PIO drive detected.\n");
+        terminal_writestring("  AHCI/NVMe support is not enabled yet.\n");
+        return;
+    }
+    terminal_writestring("  Drive ");
+    terminal_write_uint(index);
+    terminal_writestring(": ");
+    terminal_writestring(disks[index].model[0] ? disks[index].model : "ATA disk");
+    terminal_writestring("  ");
+    terminal_write_uint(disks[index].sectors);
+    terminal_writestring(" sectors\n");
+}
