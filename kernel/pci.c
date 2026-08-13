@@ -1,6 +1,7 @@
 #include "pci.h"
 #include "vga.h"
 #include "io.h"
+#include "serial.h"
 #include <stdint.h>
 
 #define PCI_CONFIG_ADDRESS 0xCF8
@@ -110,4 +111,84 @@ void pci_print_display_devices(void) {
     if (!found_any) {
         terminal_writestring("  No display controller found via PCI scan.\n");
     }
+}
+
+/* PCI header offset 0x10 = BAR0. Bit 0 of the value tells you memory
+ * (0) vs I/O (1) space; for a memory BAR the low 4 bits are flags, not
+ * part of the address, so they're masked off below. This is the
+ * window the 9260's firmware-load and host-command registers live
+ * behind - step one of Stage 2 is confirming this address is sane
+ * before anything tries to read/write through it. */
+static uint32_t pci_bar0(uint8_t bus, uint8_t dev, uint8_t func) {
+    uint32_t raw = pci_config_read32(bus, dev, func, 0x10);
+    return raw & 0xFFFFFFF0;
+}
+
+static uint32_t g_9260_bar0 = 0;
+
+uint32_t pci_get_9260_bar0(void) {
+    return g_9260_bar0;
+}
+
+static void probe_net_function(uint16_t bus, uint8_t dev, uint8_t func,
+                                int* found_9260, int* found_any_net) {
+    uint16_t vid = pci_vendor_id((uint8_t)bus, dev, func);
+    if (vid == 0xFFFF) return;
+    if (pci_class((uint8_t)bus, dev, func) != 0x02) return;
+
+    *found_any_net = 1;
+    uint16_t did = pci_device_id((uint8_t)bus, dev, func);
+    uint32_t bar0 = pci_bar0((uint8_t)bus, dev, func);
+
+    serial_writestring("[pci]   net device: vendor=");
+    serial_write_hex(vid);
+    serial_writestring(" device=");
+    serial_write_hex(did);
+    serial_writestring(" bus=");
+    serial_write_uint(bus);
+    serial_writestring(" dev=");
+    serial_write_uint(dev);
+    serial_writestring(" func=");
+    serial_write_uint(func);
+    serial_writestring(" bar0=");
+    serial_write_hex(bar0);
+    serial_writestring("\n");
+
+    if (vid == 0x8086 && did == 0x2526) {
+        *found_9260 = 1;
+        g_9260_bar0 = bar0;
+        serial_writestring("[pci]   ^ this is the Intel Wireless-AC 9260\n");
+    }
+}
+
+int pci_probe_network_devices(void) {
+    serial_writestring("[pci] scanning for network controllers (class 0x02)...\n");
+    int found_9260 = 0;
+    int found_any_net = 0;
+
+    for (uint16_t bus = 0; bus < 256; bus++) {
+        for (uint8_t dev = 0; dev < 32; dev++) {
+            if (pci_vendor_id((uint8_t)bus, dev, 0) == 0xFFFF) continue;
+
+            probe_net_function(bus, dev, 0, &found_9260, &found_any_net);
+
+            uint8_t ht = pci_header_type((uint8_t)bus, dev, 0);
+            if (ht & 0x80) { /* multi-function device */
+                for (uint8_t func = 1; func < 8; func++) {
+                    if (pci_vendor_id((uint8_t)bus, dev, func) != 0xFFFF) {
+                        probe_net_function(bus, dev, func, &found_9260, &found_any_net);
+                    }
+                }
+            }
+        }
+    }
+
+    if (!found_any_net) {
+        serial_writestring("[pci] no network-class PCI devices found\n");
+    }
+    if (!found_9260) {
+        serial_writestring("[pci] Wireless-AC 9260 NOT found - check it's seated "
+                            "and not disabled in BIOS/UEFI\n");
+    }
+    return found_9260;
 }

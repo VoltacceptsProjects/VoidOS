@@ -1,3 +1,0 @@
-name=Notepad
-description=A simple plain-text editor, in the spirit of Windows Notepad
-kind=text_editor

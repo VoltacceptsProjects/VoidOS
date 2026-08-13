@@ -12,7 +12,33 @@
 #include "mouse.h"
 #include "ps2.h"
 #include "io.h"
+#include "serial.h"
+#include "iwlwifi.h"
 #include <stdint.h>
+
+/* Stage 3: if the 9260 is present and its firmware was baked onto the
+ * ISO as a Multiboot module (see grub.cfg / Makefile), parse the
+ * firmware image and attempt the first step of NIC bring-up. Every
+ * bit of this logs to serial (-serial stdio under QEMU) rather than
+ * the screen, same as the Stage 2 PCI scan - see kernel/iwlwifi.h for
+ * exactly what this does and doesn't do yet. */
+static void iwlwifi_stage3(struct multiboot_info* mbi, int found_9260) {
+    if (!found_9260) return;
+
+    const uint8_t* fw_data;
+    uint32_t fw_size;
+    if (!iwlwifi_find_firmware_module(mbi, &fw_data, &fw_size)) {
+        serial_writestring("[iwlwifi] 9260 present but no .ucode module found on "
+                            "the ISO - add it to grub.cfg/Makefile like the .vapp "
+                            "modules\n");
+        return;
+    }
+
+    struct iwlwifi_fw_image fw;
+    if (!iwlwifi_parse_firmware(fw_data, fw_size, &fw)) return;
+
+    iwlwifi_bringup(pci_get_9260_bar0());
+}
 
 /* There's no ACPI table parser in this kernel, so we can't walk to the
  * real \_S5 sleep-type value the "proper" way. Instead we hit the fixed
@@ -43,7 +69,7 @@ static const struct ui_section sections[NUM_SECTIONS] = {
     { "System",   UI_ICON_SYSTEM },
     { "Battery",  UI_ICON_BATTERY },
     { "Apps",     UI_ICON_APPS },
-    { "Files",    UI_ICON_FILES },
+    { "App Store", UI_ICON_FILES },
 };
 
 static size_t section_start[NUM_SECTIONS];
@@ -129,6 +155,9 @@ static void generate_content(uint32_t magic, struct multiboot_info* mbi) {
 }
 
 void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
+    serial_init();
+    serial_writestring("\n[boot] VoidOS starting, serial debug channel up\n");
+
     terminal_initialize(mbi);
 
     /* Carve the text/scrollback grid down into the GUI's content card
@@ -145,6 +174,8 @@ void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
 
     voidfs_initialize();
     voidfs_install_multiboot_modules(mbi);
+    int found_9260 = pci_probe_network_devices();
+    iwlwifi_stage3(mbi, found_9260);
     generate_content(magic, mbi);
 
     int selected = 0;
