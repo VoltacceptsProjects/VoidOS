@@ -260,6 +260,27 @@ void battery_print(void) {
         terminal_setcolor(VGA_LIGHT_GREY, VGA_BLACK);
         terminal_writestring("  No ACPI Control Method Battery (PNP0C0A) found.\n");
         terminal_writestring("  (Desktops and most default VM configurations have none.)\n");
+
+        int used = aml_node_count();
+        int cap = aml_node_capacity();
+        terminal_writestring("  AML namespace nodes indexed: ");
+        terminal_write_uint((uint32_t)used);
+        terminal_writestring(" / ");
+        terminal_write_uint((uint32_t)cap);
+        terminal_putchar('\n');
+        if (used >= cap) {
+            terminal_setcolor(VGA_LIGHT_RED, VGA_BLACK);
+            terminal_writestring("  TRUNCATED: hit the node cap while indexing - some ACPI\n");
+            terminal_writestring("  objects (possibly including the battery) were dropped.\n");
+            terminal_setcolor(VGA_LIGHT_GREY, VGA_BLACK);
+        } else {
+            terminal_writestring("  Other Device() objects found in namespace: ");
+            terminal_write_uint((uint32_t)aml_device_count());
+            terminal_putchar('\n');
+            terminal_writestring("  (Not truncated - the DSDT/SSDTs genuinely have no PNP0C0A\n");
+            terminal_writestring("  device, or its _HID/_CID uses an encoding this minimal AML\n");
+            terminal_writestring("  engine doesn't evaluate, e.g. a Method with unsupported ops.)\n");
+        }
         return;
     }
 

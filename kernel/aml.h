@@ -73,4 +73,14 @@ struct aml_node* aml_child(struct aml_node* device, const char* name4);
  * you need before calling it again. */
 int aml_evaluate(struct aml_node* node, struct aml_value* out);
 
+/* Diagnostics: how many namespace nodes got indexed vs. the fixed
+ * capacity, and how many of those are Device() objects. If
+ * aml_node_count() == aml_node_capacity(), indexing hit the cap and
+ * silently stopped creating new objects partway through the table(s)
+ * - anything after that point (which may include the battery device
+ * on a large real-hardware DSDT) was dropped from the namespace. */
+int aml_node_count(void);
+int aml_node_capacity(void);
+int aml_device_count(void);
+
 #endif

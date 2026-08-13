@@ -17,12 +17,12 @@
  * namespace with no error. Sized generously for real hardware; this
  * is static BSS, not heap, so the cost is a fixed ~350KB of image
  * size, not runtime allocation. */
-#define AML_MAX_NODES        4096
+#define AML_MAX_NODES        16384
 #define AML_MAX_DEPTH        24
 #define AML_MAX_CALL_DEPTH   8
 #define AML_MAX_LOOP_ITERS   200000
 #define AML_MAX_PKG_POOL     96    /* scratch pool for one aml_evaluate() call */
-#define AML_MAX_STATIC_PKG_POOL 256 /* permanent pool for Name()-time constant packages (e.g. _CID lists) */
+#define AML_MAX_STATIC_PKG_POOL 1024 /* permanent pool for Name()-time constant packages (e.g. _CID lists) */
 #define NAME_BUF_SZ           80
 
 enum aml_node_kind {
@@ -1043,6 +1043,22 @@ int aml_find_devices_by_hid(const char* hid, struct aml_node** out, int max_out)
 struct aml_node* aml_child(struct aml_node* device, const char* name4) {
     if (!device) return 0;
     return find_named_child(device, name4);
+}
+
+int aml_node_count(void) {
+    return g_node_count;
+}
+
+int aml_node_capacity(void) {
+    return AML_MAX_NODES;
+}
+
+int aml_device_count(void) {
+    int n = 0;
+    for (int i = 0; i < g_node_count; i++) {
+        if (g_nodes[i].kind == NODE_DEVICE) n++;
+    }
+    return n;
 }
 
 int aml_evaluate(struct aml_node* node, struct aml_value* out) {
