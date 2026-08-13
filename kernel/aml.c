@@ -8,8 +8,16 @@
  * what this OS mainly targets (see the power_off() comment in
  * kernel.c). A big real-hardware DSDT may exceed AML_MAX_NODES; in
  * that case indexing just stops early rather than overflowing
- * anything - whatever was indexed before the limit is still usable. */
-#define AML_MAX_NODES        512
+ * anything - whatever was indexed before the limit is still usable.
+ * Real laptop DSDTs (this includes most Lenovo ThinkPad/IdeaPad
+ * firmware) routinely define several thousand named objects across
+ * WMI, EC, thermal, and power-management code before ever reaching
+ * the PNP0C0A battery device, so a cap sized for VM firmware silently
+ * runs out and drops the battery (and everything after it) from the
+ * namespace with no error. Sized generously for real hardware; this
+ * is static BSS, not heap, so the cost is a fixed ~350KB of image
+ * size, not runtime allocation. */
+#define AML_MAX_NODES        4096
 #define AML_MAX_DEPTH        24
 #define AML_MAX_CALL_DEPTH   8
 #define AML_MAX_LOOP_ITERS   200000
@@ -726,7 +734,30 @@ static struct eval_result eval_term(const uint8_t** cur, const uint8_t* limit, s
             char path[NAME_BUF_SZ];
             parse_name_string(cur, path, sizeof(path));
             struct aml_node* n = resolve_name(frame->scope, path);
-            if (!n) { r.status = EXEC_FAILED; return r; }
+            if (!n) {
+                /* _OSI ("Interface Name") is a predefined control
+                 * method (ACPI spec 5.7.4.5.1) evaluated natively by
+                 * the OS - it's never a named AML object, so it will
+                 * never resolve. Real DSDTs (especially on laptops)
+                 * gate large amounts of functional code, including EC
+                 * and battery access paths, behind
+                 * If (_OSI ("Windows ...")): failing this call instead
+                 * of answering it sends every such check down the
+                 * "unsupported OS" branch, which firmware vendors
+                 * barely test. Claim support unconditionally, same as
+                 * what actually running under Windows gets. */
+                const char* seg = path;
+                while (*seg == '\\' || *seg == '^') seg++;
+                int is_osi = (seg[0] == '_' && seg[1] == 'O' && seg[2] == 'S' && seg[3] == 'I' &&
+                              seg[4] == '\0');
+                if (is_osi) {
+                    struct eval_result arg = eval_term(cur, limit, frame); /* consume+discard the interface-name String */
+                    if (arg.status != EXEC_NORMAL) return arg;
+                    r.value = mkint(1);
+                    return r;
+                }
+                r.status = EXEC_FAILED; return r;
+            }
             if (n->kind == NODE_METHOD) {
                 struct aml_value argvals[7];
                 int argc = n->method_argc; if (argc > 7) argc = 7;
@@ -894,24 +925,39 @@ static void index_termlist(const uint8_t* start, const uint8_t* end, struct aml_
                 p = body_end;
             } else {
                 /* Mutex/Event/etc - not modeled as namespace objects;
-                 * best-effort skip via the general evaluator. */
+                 * best-effort skip via the general evaluator. This is
+                 * also where If/Else/While land (they're not handled
+                 * as namespace-defining ops above), and their
+                 * predicates routinely call _OSI(), which isn't a real
+                 * named object and so fails to resolve. A failed
+                 * predicate still correctly advances the cursor past
+                 * the whole block (see eval_term's IfOp/WhileOp
+                 * handling), so a non-EXEC_NORMAL status here does NOT
+                 * mean indexing lost its place - only stop if the
+                 * cursor truly didn't move, or every sibling after the
+                 * first If(_OSI(...)) in a scope (extremely common on
+                 * real hardware) would silently disappear from the
+                 * namespace, taking any devices declared after it
+                 * (e.g. a battery) with it. */
                 struct aml_frame f; f.scope = parent;
                 for (int i = 0; i < 8; i++) f.locals[i] = mkint(0);
                 for (int i = 0; i < 7; i++) f.args[i] = mkint(0);
                 const uint8_t* before = p;
-                struct eval_result rr = eval_term(&p, end, &f);
-                if (rr.status != EXEC_NORMAL || p == before) return;
+                eval_term(&p, end, &f);
+                if (p == before) return;
             }
         } else {
             /* Anything else legally shouldn't appear directly in an
              * ObjectList, but be lenient: try the general evaluator so
-             * the cursor still advances; bail if it can't. */
+             * the cursor still advances; bail only if it truly can't
+             * (see the comment above for why a failure status alone
+             * isn't a reason to give up on the rest of this scope). */
             struct aml_frame f; f.scope = parent;
             for (int i = 0; i < 8; i++) f.locals[i] = mkint(0);
             for (int i = 0; i < 7; i++) f.args[i] = mkint(0);
             const uint8_t* before = p;
-            struct eval_result rr = eval_term(&p, end, &f);
-            if (rr.status != EXEC_NORMAL || p == before) return;
+            eval_term(&p, end, &f);
+            if (p == before) return;
         }
     }
 }
