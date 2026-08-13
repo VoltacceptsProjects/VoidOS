@@ -14,7 +14,7 @@ struct mouse_state {
     uint8_t left_down;      /* current button state */
     uint8_t right_down;
     uint8_t moved;          /* position changed since the last mouse_clear_events() */
-    uint8_t left_clicked;   /* left button was released (a completed click) since last clear */
+    uint8_t left_clicked;   /* left-button press edge since last clear */
 };
 
 /* Clamps future cursor positions to [0, max_x] x [0, max_y] - normally

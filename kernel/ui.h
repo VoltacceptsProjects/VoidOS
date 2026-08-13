@@ -48,6 +48,10 @@ int ui_hit_test_sidebar(uint32_t mx, uint32_t my, int count);
  * repaint to erase the old one. No-op if gfx_available() is false. */
 void ui_draw_cursor(int32_t x, int32_t y);
 
+/* Erases the currently drawn cursor and invalidates its backing pixels.
+ * Call before repainting any region that may overlap the cursor. */
+void ui_cursor_erase(void);
+
 /* Call after anything else repaints pixels under the cursor (e.g. a
  * full ui_draw_shell()) so the next ui_draw_cursor() re-captures fresh
  * backing pixels instead of restoring stale ones over the new content. */

@@ -41,7 +41,15 @@ void mouse_feed_byte(uint8_t b) {
 
     uint8_t left = flags & 0x01;
     uint8_t right = flags & 0x02;
-    if (state.left_down && !left) state.left_clicked = 1; /* press-then-release = a click */
+    /*
+     * Treat the press edge as the one-shot click event.  The old release-edge
+     * behavior made a click disappear when another packet arrived during the
+     * screen redraw (or when a VM dropped the release packet).  UI actions
+     * are idempotent and the button state is still exposed separately, so
+     * dispatching on press keeps the desktop responsive without creating
+     * duplicate clicks.
+     */
+    if (!state.left_down && left) state.left_clicked = 1;
     state.left_down = left;
     state.right_down = right;
 }

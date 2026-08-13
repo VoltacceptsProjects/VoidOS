@@ -73,7 +73,6 @@ static void draw_app_footer(const char* hint) {
 
 static void redraw_cursor(void) {
     const struct mouse_state* ms = mouse_get_state();
-    ui_cursor_invalidate();
     ui_draw_cursor(ms->x, ms->y);
 }
 
@@ -91,6 +90,7 @@ static int card_hit(uint32_t mx, uint32_t my, int index) {
 static void draw_launcher(int selected) {
     uint32_t x, y, w, h;
     app_area(&x, &y, &w, &h);
+    ui_cursor_erase();
     fill_app_area();
     gfx_draw_text(x, y, "Applications", gfx_palette_color(VGA_WHITE),
                   gfx_palette_color(VGA_DARK_GREY), 2);
@@ -252,6 +252,7 @@ static void run_calculator(void) {
         }
         int redrew_content = dirty;
         if (dirty) {
+            ui_cursor_erase();
             draw_app_header("Calculator", "Type an expression using digits and + - * /");
             uint32_t x, y, w, h;
             app_area(&x, &y, &w, &h);
@@ -306,7 +307,7 @@ static void run_terminal(void) {
                 } else if (!format_armed) {
                     copy_text(output, "Run format voidfs first.", sizeof(output));
                 } else {
-                    copy_text(output, "Format failed: no usable ATA drive or disk error.", sizeof(output));
+                    copy_text(output, "Format failed: no usable storage device or disk error.", sizeof(output));
                 }
                 format_armed = 0;
             }
@@ -322,6 +323,7 @@ static void run_terminal(void) {
         }
         int redrew_content = dirty;
         if (dirty) {
+            ui_cursor_erase();
             draw_app_header("Terminal", "A small command shell built into the VoidOS application runtime");
             uint32_t x, y, w, h;
             app_area(&x, &y, &w, &h);
@@ -366,6 +368,7 @@ static void run_scratchpad(void) {
         }
         int redrew_content = dirty;
         if (dirty) {
+            ui_cursor_erase();
             draw_app_header("Scratchpad", "A temporary note that lives until you close the app");
             uint32_t x, y, w, h;
             app_area(&x, &y, &w, &h);
