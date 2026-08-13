@@ -11,8 +11,6 @@
 
 static uint32_t screen_w, screen_h;
 
-static void cursor_restore(void);
-
 static void layout_metrics(void) {
     screen_w = gfx_screen_width();
     screen_h = gfx_screen_height();
@@ -164,8 +162,6 @@ static void draw_card(void) {
 
 void ui_draw_shell(const struct ui_section* sections, int count, int selected) {
     if (!gfx_available()) return;
-    /* Remove a visible cursor before painting over the desktop. */
-    cursor_restore();
     layout_metrics();
 
     gfx_fill_rect(0, 0, screen_w, screen_h, gfx_palette_color(VGA_BLACK));
@@ -202,10 +198,6 @@ void ui_cursor_invalidate(void) {
     cursor_backing_valid = 0;
 }
 
-void ui_cursor_erase(void) {
-    cursor_restore();
-}
-
 static void cursor_restore(void) {
     if (!cursor_backing_valid) return;
     for (uint32_t r = 0; r < CURSOR_H; r++)
@@ -224,14 +216,9 @@ void ui_draw_cursor(int32_t x, int32_t y) {
     if (x < 0 || y < 0) return;
     uint32_t ux = (uint32_t)x, uy = (uint32_t)y;
 
-    for (uint32_t r = 0; r < CURSOR_H; r++) {
-        for (uint32_t c = 0; c < CURSOR_W; c++) {
-            cursor_backing[r][c] =
-                (ux + c < screen_w && uy + r < screen_h)
-                    ? gfx_get_pixel(ux + c, uy + r)
-                    : 0;
-        }
-    }
+    for (uint32_t r = 0; r < CURSOR_H; r++)
+        for (uint32_t c = 0; c < CURSOR_W; c++)
+            cursor_backing[r][c] = gfx_get_pixel(ux + c, uy + r);
     cursor_bx = x;
     cursor_by = y;
     cursor_backing_valid = 1;

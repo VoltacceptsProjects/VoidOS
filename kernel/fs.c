@@ -442,7 +442,7 @@ void voidfs_print_files(void) {
     terminal_writestring("VoidFS\n\n");
     terminal_setcolor(VGA_LIGHT_GREY, VGA_DARK_GREY);
     if (persistent_volume) {
-        terminal_writestring("Persistent volume on Drive ");
+        terminal_writestring("Persistent ATA volume on Drive ");
         terminal_write_uint(persistent_disk);
         terminal_writestring("\n");
     } else {

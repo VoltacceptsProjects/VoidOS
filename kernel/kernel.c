@@ -249,8 +249,8 @@ void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
             terminal_render_section(top, section_start[selected], section_end[selected]);
             ui_cursor_invalidate(); /* shell repaint already overwrote the old cursor pixels */
         } else if (k != KEY_NONE) {
-            ui_cursor_erase();
             terminal_render_section(top, section_start[selected], section_end[selected]);
+            ui_cursor_invalidate(); /* content repaint may have overwritten the old cursor pixels */
         }
         ui_draw_cursor(ms->x, ms->y);
     }

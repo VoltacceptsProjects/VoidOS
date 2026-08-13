@@ -37,8 +37,8 @@ struct voidfs_file {
     uint32_t disk_sectors;
 };
 
-/* Detects ATA, SATA/AHCI, and NVMe drives, mounts the first VoidFS volume it
- * finds, and otherwise creates an empty RAM-backed volume. */
+/* Detects ATA drives, mounts the first VoidFS volume it finds, and otherwise
+ * creates an empty RAM-backed volume. */
 void voidfs_initialize(void);
 
 /* Installs one complete .vapp package into the volume.
