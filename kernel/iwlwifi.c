@@ -1,6 +1,7 @@
 #include "iwlwifi.h"
 #include "io.h"
 #include "serial.h"
+#include "vga.h"
 
 /* --- real iwlwifi TLV container format ---------------------------------
  * Verified against an actual iwlwifi-9260-th-b0-jf-b0-46.ucode file: a
@@ -496,4 +497,381 @@ int iwlwifi_load_firmware(uint32_t bar0, const struct iwlwifi_fw_image* fw) {
                             "hardware itself is at fault.\n");
     }
     return alive;
+}
+
+/* --- RX transport: draining the ring built above -------------------------
+ * See the header comment for exactly what's verified vs. hex-dumped here.
+ */
+
+#define IWL_LEGACY_GROUP  0x00u
+#define IWL_ALIVE_CMD_ID  0x01u  /* UCODE_ALIVE_NTFY / MVM_ALIVE, same value
+                                     under both names across fw API versions */
+#define IWL_ECHO_CMD_ID   0x03u
+
+/* Confirmed against drivers/net/wireless/intel/iwlwifi/iwl-trans.h. */
+#define FH_RSCSR_FRAME_SIZE_MSK 0x00003FFFu
+
+struct iwl_cmd_header {
+    uint8_t  cmd;
+    uint8_t  group_id;
+    uint16_t sequence; /* le16 on the wire; x86 is already little-endian */
+} __attribute__((packed));
+
+struct iwl_rx_packet {
+    uint32_t len_n_flags; /* le32 on the wire */
+    struct iwl_cmd_header hdr;
+    uint8_t data[];
+} __attribute__((packed));
+
+/* Confirmed against fw/api/cmdhdr.h. */
+#define QUEUE_TO_SEQ(q) (((q) & 0x1f) << 8)
+#define INDEX_TO_SEQ(i) ((i) & 0xff)
+#define SEQ_TO_INDEX(s) ((s) & 0xff)
+
+static inline uint32_t iwl_rx_packet_len(const struct iwl_rx_packet* pkt) {
+    return pkt->len_n_flags & FH_RSCSR_FRAME_SIZE_MSK;
+}
+static inline uint32_t iwl_rx_packet_payload_len(const struct iwl_rx_packet* pkt) {
+    uint32_t total = iwl_rx_packet_len(pkt);
+    uint32_t hdr_sz = (uint32_t)sizeof(struct iwl_cmd_header);
+    return total > hdr_sz ? total - hdr_sz : 0;
+}
+
+/* Scans the 8 static RX buffers iwlwifi_load_firmware() built for a
+ * packet matching group_id/cmd_id. This deliberately does NOT try to
+ * interpret g_rb_status.closed_rb_num as a ring index - upstream masks
+ * and walks that value in a way this file hasn't independently
+ * re-verified this session, and getting that wrong would silently skip
+ * or double-read a buffer. Instead it relies on the buffers being
+ * zero-initialized BSS: a slot the device never DMA'd into still reads
+ * len_n_flags==0, which iwl_rx_packet_len() reports as length 0 - a
+ * safe "nothing here" sentinel that doesn't depend on any ring-pointer
+ * semantics at all. Returns 0 if no match. */
+static const struct iwl_rx_packet* find_rx_packet(uint8_t group_id, uint8_t cmd_id) {
+    for (int i = 0; i < IWLWIFI_RX_RB_COUNT; i++) {
+        const struct iwl_rx_packet* pkt =
+            (const struct iwl_rx_packet*)&g_rx_buffers[i][0];
+        if (iwl_rx_packet_len(pkt) < sizeof(struct iwl_cmd_header)) continue;
+        if (pkt->hdr.cmd == cmd_id && pkt->hdr.group_id == group_id) return pkt;
+    }
+    return 0;
+}
+
+static void hex_dump_line(const uint8_t* data, uint32_t len) {
+    static const char digits[] = "0123456789ABCDEF";
+    char byte_str[3] = { 0, 0, 0 };
+    for (uint32_t i = 0; i < len; i++) {
+        byte_str[0] = digits[(data[i] >> 4) & 0xF];
+        byte_str[1] = digits[data[i] & 0xF];
+        serial_writestring(byte_str);
+        serial_writestring((i + 1) % 16 == 0 ? "\n[iwlwifi]     " : " ");
+    }
+    serial_writestring("\n");
+}
+
+/* Full iwl_alive_ntf_v3 layout - confirmed field-for-field against the
+ * real upstream drivers/net/wireless/intel/iwlwifi/fw/api/alive.h
+ * (current master, plus the stable-tree fix "iwlwifi: fix the ALIVE
+ * notification layout", kernel commit 5cd2d8fc6c6b, for the
+ * ucode_major/minor ordering). v3 is the right shape for a 9260-class
+ * (pre-AX210, gen1) device; if payload_len doesn't match sizeof(this)
+ * exactly, the firmware is more likely handing back iwl_alive_ntf_v7/v8
+ * instead and this struct needs to grow to match.
+ *
+ * IMPORTANT: pkt->data is the whole payload, and status+flags (4 bytes)
+ * come BEFORE lmac_data - an earlier version of this parser started
+ * reading ucode_major at offset 0 and was off by 4 bytes into every
+ * field as a result. */
+struct iwl_lmac_debug_addrs {
+    uint32_t error_event_table_ptr; /* SRAM address for error log */
+    uint32_t log_event_table_ptr;   /* SRAM address for LMAC event log */
+    uint32_t cpu_register_ptr;
+    uint32_t dbgm_config_ptr;
+    uint32_t alive_counter_ptr;
+    uint32_t scd_base_ptr;          /* SRAM address for SCD */
+    uint32_t st_fwrd_addr;          /* pointer to Store and forward */
+    uint32_t st_fwrd_size;
+} __attribute__((packed)); /* UCODE_DEBUG_ADDRS_API_S_VER_2 */
+
+struct iwl_lmac_alive {
+    uint32_t ucode_major;
+    uint32_t ucode_minor;
+    uint8_t  ver_subtype;
+    uint8_t  ver_type;
+    uint8_t  mac;
+    uint8_t  opt;
+    uint32_t timestamp;
+    struct iwl_lmac_debug_addrs dbg_ptrs;
+} __attribute__((packed)); /* UCODE_ALIVE_NTFY_API_S_VER_3 */
+
+struct iwl_umac_debug_addrs {
+    uint32_t error_info_addr;    /* SRAM address for UMAC error log */
+    uint32_t dbg_print_buff_addr;
+} __attribute__((packed)); /* UMAC_DEBUG_ADDRS_API_S_VER_1 */
+
+struct iwl_umac_alive {
+    uint32_t umac_major; /* UMAC version: major */
+    uint32_t umac_minor; /* UMAC version: minor */
+    struct iwl_umac_debug_addrs dbg_ptrs;
+} __attribute__((packed)); /* UMAC_ALIVE_DATA_API_S_VER_2 */
+
+#define IWL_ALIVE_STATUS_ERR 0xDEADu
+#define IWL_ALIVE_STATUS_OK  0xCAFEu
+
+struct iwl_alive_ntf_v3 {
+    uint16_t status;
+    uint16_t flags;
+    struct iwl_lmac_alive lmac_data;
+    struct iwl_umac_alive umac_data;
+} __attribute__((packed)); /* UCODE_ALIVE_NTFY_API_S_VER_3 */
+
+/* Mirrors a debug line to both serial and the on-screen terminal, so a
+ * capture doesn't strictly require a serial cable/adapter to read - the
+ * on-screen copy is slower to work with but it's free and it's already
+ * wired up via vga.c's terminal_* functions. */
+static void dbg_writestring(const char* s) {
+    serial_writestring(s);
+    terminal_writestring(s);
+}
+static void dbg_write_hex(uint32_t n) {
+    serial_write_hex(n);
+    terminal_write_hex32(n);
+}
+static void dbg_write_uint(uint32_t n) {
+    serial_write_uint(n);
+    terminal_write_uint(n);
+}
+
+int iwlwifi_service_alive(uint32_t bar0) {
+    (void)bar0; /* the ALIVE payload itself lives in g_rx_buffers, already
+                    DMA'd there by the device; nothing left to read from
+                    BAR0 for this step */
+
+    dbg_writestring("[iwlwifi] looking for the ALIVE notification in the "
+                     "RX ring\n");
+
+    const struct iwl_rx_packet* pkt = find_rx_packet(IWL_LEGACY_GROUP, IWL_ALIVE_CMD_ID);
+    if (!pkt) {
+        dbg_writestring("[iwlwifi]   no ALIVE packet found in any of the "
+                         "8 RX buffers. If CSR_INT_BIT_ALIVE fired, this "
+                         "most likely means the RB the device DMA'd it "
+                         "into isn't where find_rx_packet() is looking - "
+                         "check g_rx_buffers/g_rx_free_rbd against a real "
+                         "capture before assuming the notification was "
+                         "never sent at all.\n");
+        return 0;
+    }
+
+    uint32_t payload_len = iwl_rx_packet_payload_len(pkt);
+    dbg_writestring("[iwlwifi]   found ALIVE: sequence=");
+    dbg_write_hex(pkt->hdr.sequence);
+    dbg_writestring(" payload_len=");
+    dbg_write_uint(payload_len);
+    dbg_writestring(" bytes\n");
+
+    if (payload_len < sizeof(struct iwl_alive_ntf_v3)) {
+        dbg_writestring("[iwlwifi]   payload shorter than iwl_alive_ntf_v3 "
+                         "(");
+        dbg_write_uint((uint32_t)sizeof(struct iwl_alive_ntf_v3));
+        dbg_writestring(" bytes expected) - this is likely iwl_alive_ntf_v7 "
+                         "or v8 instead, not this v3 shape. Hex dump "
+                         "follows so the real size/shape can be checked by "
+                         "hand:\n[iwlwifi]     ");
+        hex_dump_line(pkt->data, payload_len);
+        return 0;
+    }
+
+    const struct iwl_alive_ntf_v3* ntf = (const struct iwl_alive_ntf_v3*)pkt->data;
+
+    dbg_writestring("[iwlwifi]   status=");
+    dbg_write_hex(ntf->status);
+    dbg_writestring(ntf->status == IWL_ALIVE_STATUS_OK ? " (OK)" :
+                     ntf->status == IWL_ALIVE_STATUS_ERR ? " (ERR)" : " (unknown)");
+    dbg_writestring(" flags=");
+    dbg_write_hex(ntf->flags);
+    dbg_writestring("\n");
+
+    dbg_writestring("[iwlwifi]   lmac ucode version ");
+    dbg_write_uint(ntf->lmac_data.ucode_major);
+    dbg_writestring(".");
+    dbg_write_uint(ntf->lmac_data.ucode_minor);
+    dbg_writestring(" ver_type=");
+    dbg_write_uint(ntf->lmac_data.ver_type);
+    dbg_writestring(" ver_subtype=");
+    dbg_write_uint(ntf->lmac_data.ver_subtype);
+    dbg_writestring(" mac=");
+    dbg_write_uint(ntf->lmac_data.mac);
+    dbg_writestring(" opt=");
+    dbg_write_uint(ntf->lmac_data.opt);
+    dbg_writestring("\n[iwlwifi]   lmac error_event_table_ptr=");
+    dbg_write_hex(ntf->lmac_data.dbg_ptrs.error_event_table_ptr);
+    dbg_writestring(" log_event_table_ptr=");
+    dbg_write_hex(ntf->lmac_data.dbg_ptrs.log_event_table_ptr);
+    dbg_writestring("\n");
+
+    dbg_writestring("[iwlwifi]   umac version ");
+    dbg_write_uint(ntf->umac_data.umac_major);
+    dbg_writestring(".");
+    dbg_write_uint(ntf->umac_data.umac_minor);
+    dbg_writestring(" error_info_addr=");
+    dbg_write_hex(ntf->umac_data.dbg_ptrs.error_info_addr);
+    dbg_writestring("\n");
+
+    dbg_writestring("[iwlwifi] ALIVE decoded and confirmed against the real "
+                     "iwl_alive_ntf_v3 layout. This confirms two things a "
+                     "CSR_INT_BIT_ALIVE poll alone can't: the RX ring built "
+                     "in iwlwifi_load_firmware() is wired correctly (device "
+                     "can DMA a real packet into it and we can find it), "
+                     "and the firmware genuinely identifies itself as alive "
+                     "rather than just raising the interrupt.\n");
+    return ntf->status == IWL_ALIVE_STATUS_OK;
+}
+
+/* --- host commands: TX side ----------------------------------------------
+ * See the header comment for exactly what's verified vs. assumed here.
+ */
+
+/* Confirmed "gen1" TFD format (pre-22000/AX210 devices, which includes
+ * the 9260): reserved[3], num_tbs, up to 20 (lo32,hi_len16) fragment
+ * descriptors, 4-byte pad. sizeof(this) == 128, which is exactly why
+ * g_tx_cmdq above was already sized at IWLWIFI_TX_CMDQ_ENTRIES * 128 -
+ * that wasn't a coincidence, it's what this struct was always meant to
+ * overlay. */
+struct iwl_tfd_tb {
+    uint32_t lo;
+    uint16_t hi_len; /* bits 15:4 = length, bits 3:0 = addr bits 32:35
+                         (always 0 here - this kernel has no PAE, every
+                         address fits in 32 bits) */
+} __attribute__((packed));
+
+#define TFD_GEN1_NUM_TBS 20
+
+struct iwl_tfd {
+    uint8_t reserved1[3];
+    uint8_t num_tbs;
+    struct iwl_tfd_tb tbs[TFD_GEN1_NUM_TBS];
+    uint32_t pad;
+} __attribute__((packed));
+
+_Static_assert(sizeof(struct iwl_tfd) == 128,
+               "iwl_tfd must match the 128-byte g_tx_cmdq entry stride");
+
+/* HBUS_BASE - see the header comment: the +0x060 offset and "bits 11:8
+ * select the queue" framing are confirmed from a real iwl-csr.h diff;
+ * this base address is carried from memory, not re-fetched this
+ * session. */
+#define HBUS_BASE          0x400u
+#define HBUS_TARG_WRPTR    (HBUS_BASE + 0x060u)
+
+/* Command bytes (header + payload) live here, separate from the TFD
+ * ring, exactly like a real driver's command buffer - the TFD only
+ * holds a pointer+length into wherever the bytes actually are. No
+ * paging in this kernel, so "pointer" and "physical address" are the
+ * same number, same simplification iwlwifi_load_firmware() relies on. */
+#define IWLWIFI_CMD_BUF_SIZE 252 /* header + payload, comfortably under a
+                                     4K page and under the 12-bit TFD
+                                     length field's 4095-byte ceiling */
+static uint8_t g_cmd_buf[IWLWIFI_CMD_BUF_SIZE] __attribute__((aligned(16)));
+static uint32_t g_cmd_write_idx = 0;
+
+/* Queue index used for both the sequence-number encoding and the
+ * HBUS_TARG_WRPTR queue-select field - see the header comment for why
+ * 0 is a guess, not a verified value. */
+#define IWLWIFI_CMD_QUEUE_ID 0
+
+int iwlwifi_send_host_cmd(uint32_t bar0, uint8_t cmd_id,
+                           const void* payload, uint16_t payload_len) {
+    if ((uint32_t)payload_len + sizeof(struct iwl_cmd_header) > IWLWIFI_CMD_BUF_SIZE) {
+        serial_writestring("[iwlwifi] host cmd payload too big for g_cmd_buf\n");
+        return 0;
+    }
+
+    uint32_t idx = g_cmd_write_idx % IWLWIFI_TX_CMDQ_ENTRIES;
+
+    struct iwl_cmd_header hdr;
+    hdr.cmd = cmd_id;
+    hdr.group_id = IWL_LEGACY_GROUP;
+    hdr.sequence = (uint16_t)(QUEUE_TO_SEQ(IWLWIFI_CMD_QUEUE_ID) | INDEX_TO_SEQ(idx));
+
+    uint8_t* dst = g_cmd_buf;
+    for (uint32_t i = 0; i < sizeof(hdr); i++) dst[i] = ((uint8_t*)&hdr)[i];
+    for (uint32_t i = 0; i < payload_len; i++) dst[sizeof(hdr) + i] = ((const uint8_t*)payload)[i];
+    uint32_t total_len = (uint32_t)sizeof(hdr) + payload_len;
+
+    struct iwl_tfd* tfd_ring = (struct iwl_tfd*)(uintptr_t)g_tx_cmdq;
+    struct iwl_tfd* tfd = &tfd_ring[idx];
+    for (uint32_t i = 0; i < sizeof(*tfd); i++) ((uint8_t*)tfd)[i] = 0;
+    tfd->num_tbs = 1;
+    tfd->tbs[0].lo = (uint32_t)(uintptr_t)g_cmd_buf;
+    tfd->tbs[0].hi_len = (uint16_t)(total_len << 4); /* addr bits 32:35 = 0 */
+
+    serial_writestring("[iwlwifi] posting host cmd 0x");
+    serial_write_hex(cmd_id);
+    serial_writestring(" at cmd-queue slot ");
+    serial_write_uint(idx);
+    serial_writestring(", ringing HBUS_TARG_WRPTR\n");
+
+    uint32_t doorbell = ((IWLWIFI_CMD_QUEUE_ID & 0xF) << 8) | ((idx + 1) & 0xFF);
+    csr_write(bar0, HBUS_TARG_WRPTR, doorbell);
+
+    g_cmd_write_idx++;
+    return 1;
+}
+
+int iwlwifi_echo_test(uint32_t bar0) {
+    static const uint8_t echo_payload[4] = { 'V', 'O', 'I', 'D' };
+
+    serial_writestring("[iwlwifi] sending ECHO_CMD to test the host-command "
+                        "path\n");
+    if (!iwlwifi_send_host_cmd(bar0, IWL_ECHO_CMD_ID, echo_payload, sizeof(echo_payload))) {
+        return 0;
+    }
+
+    int got = 0;
+    const struct iwl_rx_packet* pkt = 0;
+    for (uint32_t tries = 0; tries < 5000; tries++) {
+        pkt = find_rx_packet(IWL_LEGACY_GROUP, IWL_ECHO_CMD_ID);
+        if (pkt) { got = 1; break; }
+        short_delay(10);
+    }
+
+    if (!got) {
+        serial_writestring("[iwlwifi]   timed out waiting for the ECHO "
+                            "response. ALIVE having worked but this timing "
+                            "out points at the command-queue side (wrong "
+                            "queue index in the doorbell/sequence, or the "
+                            "TFD/HBUS_TARG_WRPTR framing) rather than the RX "
+                            "path, which iwlwifi_service_alive() already "
+                            "exercised successfully.\n");
+        return 0;
+    }
+
+    uint32_t payload_len = iwl_rx_packet_payload_len(pkt);
+    serial_writestring("[iwlwifi]   got an ECHO response, payload_len=");
+    serial_write_uint(payload_len);
+    serial_writestring(" bytes: ");
+    hex_dump_line(pkt->data, payload_len < 16 ? payload_len : 16);
+
+    int matches = (payload_len == sizeof(echo_payload));
+    for (uint32_t i = 0; matches && i < sizeof(echo_payload); i++) {
+        if (pkt->data[i] != echo_payload[i]) matches = 0;
+    }
+
+    if (matches) {
+        serial_writestring("[iwlwifi]   payload echoed back unchanged - the "
+                            "full host-command round trip (TFD -> doorbell "
+                            "-> firmware -> RX ring) works. Real commands "
+                            "(NVM read, scan config, PHY context, ...) can "
+                            "be built on iwlwifi_send_host_cmd() from here; "
+                            "802.11 scan/auth/association is the next "
+                            "checkpoint past this one.\n");
+    } else {
+        serial_writestring("[iwlwifi]   response arrived but payload doesn't "
+                            "match what was sent - command path fired but "
+                            "something in the framing (TFD length, buffer "
+                            "offset) is off. Check the hex dump above "
+                            "against what was sent (56 4F 49 44 = \"VOID\") "
+                            "before assuming the device itself misbehaved.\n");
+    }
+    return matches;
 }

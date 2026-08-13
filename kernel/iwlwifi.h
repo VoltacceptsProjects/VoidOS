@@ -137,4 +137,83 @@ int iwlwifi_bringup(uint32_t bar0);
  * check the serial log either way, it explains what it saw. */
 int iwlwifi_load_firmware(uint32_t bar0, const struct iwlwifi_fw_image* fw);
 
+/* --- RX transport: draining the ring built above, and host commands ----
+ *
+ * Scope of what's added here, same honesty rule as everything above:
+ *
+ *   iwlwifi_service_alive() reads the RX ring iwlwifi_load_firmware()
+ *   already built and decodes whatever landed in it using the real
+ *   iwl_rx_packet / iwl_cmd_header wire format - verified against
+ *   drivers/net/wireless/intel/iwlwifi/iwl-trans.h and
+ *   fw/api/cmdhdr.h, not guessed (len_n_flags + FH_RSCSR_FRAME_SIZE_MSK,
+ *   the cmd/group_id/sequence header, all confirmed byte-for-byte).
+ *   It confirms the packet is genuinely UCODE_ALIVE_NTFY (cmd 0x1,
+ *   group 0) and fully decodes struct iwl_alive_ntf_v3 - status, flags,
+ *   iwl_lmac_alive (ucode_major/minor, ver_subtype, ver_type, mac, opt,
+ *   timestamp, iwl_lmac_debug_addrs dbg_ptrs), and iwl_umac_alive
+ *   (umac_major/minor, iwl_umac_debug_addrs dbg_ptrs), all confirmed
+ *   byte-for-byte against the real drivers/net/wireless/intel/iwlwifi/
+ *   fw/api/alive.h upstream source (plus the stable-tree fix for the
+ *   ucode_major/minor ordering). This closed a real bug: pkt->data is
+ *   the whole iwl_alive_ntf_v3 payload, and status+flags (4 bytes) come
+ *   before lmac_data - the previous version of this parser started
+ *   reading ucode_major at offset 0 and was silently off by 4 bytes on
+ *   every field. v3 is the right shape for this 9260-class device; if a
+ *   real capture ever shows payload_len not matching sizeof(that struct)
+ *   exactly, that's the signal the firmware handed back v7/v8 instead
+ *   and this needs to grow to match - iwlwifi_service_alive() already
+ *   hex-dumps that mismatch case instead of misreading it.
+ *
+ *   iwlwifi_send_host_cmd() / iwlwifi_echo_test() build a real TFD -
+ *   the "gen1" 128-byte format (3 reserved bytes, num_tbs, 20
+ *   (lo32,hi_len16) fragment descriptors, 4-byte pad) that's exactly
+ *   why g_tx_cmdq was already sized at IWLWIFI_TX_CMDQ_ENTRIES * 128
+ *   above - into the command queue, point its one fragment at a real
+ *   iwl_cmd_header + payload sitting in a static buffer, and ring
+ *   HBUS_TARG_WRPTR (HBUS_BASE+0x060 - the +0x060 and the "bits 11:8
+ *   select the queue" layout are confirmed from a real iwl-csr.h diff
+ *   this session; HBUS_BASE itself is carried from memory as 0x400,
+ *   the same as every iwlwifi generation back to the 3945, but that
+ *   specific constant was not re-fetched from source this session, so
+ *   treat CSR 0x460 as "very likely right" rather than "verified" like
+ *   the rest of this file's register offsets) to tell the device a new
+ *   TFD is posted. iwlwifi_echo_test() exercises this with
+ *   ECHO_CMD (0x3, group 0), documented upstream as existing exactly
+ *   for this: send data, get it back unchanged.
+ *
+ *   What's genuinely unverified here, stated plainly: which queue
+ *   index the firmware expects this minimal, pre-scheduler-config
+ *   command queue to answer on. Normal MVM operation uses a queue the
+ *   driver explicitly configures via SCD_QUEUE_CFG first; nothing in
+ *   this file has done that, because context-info self-load is
+ *   supposed to hand the device one working command queue before any
+ *   of that setup exists. Queue 0 is used below as the only queue that
+ *   plausibly exists this early - if ALIVE fires but
+ *   iwlwifi_echo_test() times out, a wrong queue index here is the
+ *   first thing to check against a real capture, before assuming the
+ *   TFD or header framing is wrong (those are the parts verified
+ *   against upstream source above).
+ *
+ * Call iwlwifi_service_alive() only after iwlwifi_load_firmware() has
+ * returned 1. Returns 1 if a decodable ALIVE packet was found, 0
+ * otherwise - check the serial log either way.
+ *
+ * Call iwlwifi_echo_test() only after iwlwifi_service_alive() has
+ * returned 1 (no point probing the command path before we've confirmed
+ * the RX path can deliver a response). Returns 1 if the echoed payload
+ * came back intact, 0 on timeout or mismatch. */
+int iwlwifi_service_alive(uint32_t bar0);
+
+/* Builds an iwl_cmd_header + payload, posts it as a one-fragment TFD on
+ * the command queue, and rings HBUS_TARG_WRPTR. Does not wait for a
+ * response - callers that need one poll find_rx_packet()'s job
+ * themselves (see iwlwifi_echo_test() for the pattern) since what
+ * counts as "the response" differs per command. Returns 1 if the
+ * command was posted (says nothing about whether the device accepted
+ * or answered it), 0 if payload_len didn't fit in the command buffer. */
+int iwlwifi_send_host_cmd(uint32_t bar0, uint8_t cmd_id,
+                           const void* payload, uint16_t payload_len);
+
+int iwlwifi_echo_test(uint32_t bar0);
+
 #endif
