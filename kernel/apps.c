@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "fs.h"
 #include "keyboard.h"
 #include "mouse.h"
 #include "ps2.h"
@@ -221,7 +222,12 @@ static void run_calculator(void) {
         ps2_poll();
         enum key key = keyboard_poll_key();
         char c = keyboard_poll_char();
-        if (key == KEY_ESC) return;
+        const struct mouse_state* ms = mouse_get_state();
+        int moved = ms->moved;
+        if (key == KEY_ESC) {
+            mouse_clear_events();
+            return;
+        }
         if (key == KEY_BACKSPACE && length) {
             expression[--length] = '\0';
             dirty = 1;
@@ -244,6 +250,7 @@ static void run_calculator(void) {
                 dirty = 1;
             }
         }
+        int redrew_content = dirty;
         if (dirty) {
             draw_app_header("Calculator", "Type an expression using digits and + - * /");
             uint32_t x, y, w, h;
@@ -258,9 +265,10 @@ static void run_calculator(void) {
             gfx_draw_text(x, y + 208, result, gfx_palette_color(VGA_WHITE),
                           gfx_palette_color(VGA_BLACK), 2);
             draw_app_footer("Enter: calculate   C: clear   Backspace: delete   Esc: close");
-            redraw_cursor();
             dirty = 0;
         }
+        if (redrew_content || moved) redraw_cursor();
+        mouse_clear_events();
     }
 }
 
@@ -268,21 +276,40 @@ static void run_terminal(void) {
     char command[72] = {0};
     char output[96] = "Type help for available commands.";
     unsigned int length = 0;
+    int format_armed = 0;
     int dirty = 1;
 
     while (1) {
         ps2_poll();
         enum key key = keyboard_poll_key();
         char c = keyboard_poll_char();
-        if (key == KEY_ESC) return;
+        const struct mouse_state* ms = mouse_get_state();
+        int moved = ms->moved;
+        if (key == KEY_ESC) {
+            mouse_clear_events();
+            return;
+        }
         if (key == KEY_BACKSPACE && length) {
             command[--length] = '\0';
             dirty = 1;
         } else if (key == KEY_ENTER) {
-            if (str_equal(command, "help")) copy_text(output, "help  about  apps  clear", sizeof(output));
+            if (str_equal(command, "help")) copy_text(output, "help  about  apps  clear  format voidfs", sizeof(output));
             else if (str_equal(command, "about")) copy_text(output, "VoidOS built-in shell; Esc closes the app.", sizeof(output));
             else if (str_equal(command, "apps")) copy_text(output, "calculator  terminal  scratchpad", sizeof(output));
             else if (str_equal(command, "clear")) copy_text(output, "", sizeof(output));
+            else if (str_equal(command, "format voidfs")) {
+                format_armed = 1;
+                copy_text(output, "WARNING: this erases Drive 0. Type format confirm to continue.", sizeof(output));
+            } else if (str_equal(command, "format confirm")) {
+                if (format_armed && voidfs_format_drive(0) == 0) {
+                    copy_text(output, "Drive 0 formatted as VoidFS. Restart to refresh the Files page.", sizeof(output));
+                } else if (!format_armed) {
+                    copy_text(output, "Run format voidfs first.", sizeof(output));
+                } else {
+                    copy_text(output, "Format failed: no usable ATA drive or disk error.", sizeof(output));
+                }
+                format_armed = 0;
+            }
             else if (length) copy_text(output, "command not found", sizeof(output));
             else copy_text(output, "", sizeof(output));
             length = 0;
@@ -293,6 +320,7 @@ static void run_terminal(void) {
             command[length] = '\0';
             dirty = 1;
         }
+        int redrew_content = dirty;
         if (dirty) {
             draw_app_header("Terminal", "A small command shell built into the VoidOS application runtime");
             uint32_t x, y, w, h;
@@ -306,9 +334,10 @@ static void run_terminal(void) {
             gfx_draw_text(x + 72, y + 146, command, gfx_palette_color(VGA_WHITE),
                           gfx_palette_color(VGA_BLACK), 1);
             draw_app_footer("Enter: run command   Backspace: delete   Esc: close");
-            redraw_cursor();
             dirty = 0;
         }
+        if (redrew_content || moved) redraw_cursor();
+        mouse_clear_events();
     }
 }
 
@@ -321,7 +350,12 @@ static void run_scratchpad(void) {
         ps2_poll();
         enum key key = keyboard_poll_key();
         char c = keyboard_poll_char();
-        if (key == KEY_ESC) return;
+        const struct mouse_state* ms = mouse_get_state();
+        int moved = ms->moved;
+        if (key == KEY_ESC) {
+            mouse_clear_events();
+            return;
+        }
         if (key == KEY_BACKSPACE && length) {
             note[--length] = '\0';
             dirty = 1;
@@ -330,6 +364,7 @@ static void run_scratchpad(void) {
             note[length] = '\0';
             dirty = 1;
         }
+        int redrew_content = dirty;
         if (dirty) {
             draw_app_header("Scratchpad", "A temporary note that lives until you close the app");
             uint32_t x, y, w, h;
@@ -342,9 +377,10 @@ static void run_scratchpad(void) {
             gfx_draw_text(x + 16, y + 162, note[0] ? note : "Start typing...",
                           gfx_palette_color(VGA_WHITE), gfx_palette_color(VGA_BLACK), 1);
             draw_app_footer("Type to write   Backspace: delete   Esc: close");
-            redraw_cursor();
             dirty = 0;
         }
+        if (redrew_content || moved) redraw_cursor();
+        mouse_clear_events();
     }
 }
 
@@ -358,11 +394,18 @@ void apps_run_launcher(void) {
     int selected = 0;
     int dirty = 1;
 
+    /* Do not reprocess the click that opened the Applications section. */
+    mouse_clear_events();
     while (1) {
         ps2_poll();
         enum key key = keyboard_poll_key();
         const struct mouse_state* ms = mouse_get_state();
-        if (key == KEY_ESC) return;
+        int moved = ms->moved;
+        int clicked = ms->left_clicked;
+        if (key == KEY_ESC) {
+            mouse_clear_events();
+            return;
+        }
         if (key == KEY_LEFT) {
             selected = (selected + APP_COUNT - 1) % APP_COUNT;
             dirty = 1;
@@ -370,27 +413,30 @@ void apps_run_launcher(void) {
             selected = (selected + 1) % APP_COUNT;
             dirty = 1;
         } else if (key == KEY_ENTER) {
+            mouse_clear_events();
             run_app(selected);
             dirty = 1;
         }
 
-        if (ms->left_clicked) {
+        if (clicked) {
             for (int i = 0; i < APP_COUNT; i++) {
                 if (card_hit((uint32_t)ms->x, (uint32_t)ms->y, i)) {
                     selected = i;
+                    mouse_clear_events();
                     run_app(i);
                     dirty = 1;
                     break;
                 }
             }
         }
-        if (ms->moved) dirty = 1;
         mouse_clear_events();
 
+        int redrew_content = dirty;
         if (dirty) {
             draw_launcher(selected);
-            redraw_cursor();
             dirty = 0;
         }
+        /* Movement only repaints the small cursor backing rectangle. */
+        if (moved || redrew_content) redraw_cursor();
     }
 }

@@ -33,9 +33,12 @@ struct voidfs_file {
     char mime[VOIDFS_MIME_MAX];
     uint32_t size;
     uint32_t storage_offset;
+    uint32_t disk_start_lba;
+    uint32_t disk_sectors;
 };
 
-/* Creates the RAM-backed VoidFS volume and clears its directory. */
+/* Detects ATA drives, mounts the first VoidFS volume it finds, and otherwise
+ * creates an empty RAM-backed volume. */
 void voidfs_initialize(void);
 
 /* Installs one complete .vapp package into the volume.
@@ -47,6 +50,12 @@ int voidfs_install_vapp(const uint8_t* package, uint32_t package_size,
 /* Imports every Multiboot module whose name ends in ".vapp". This is the
  * boot-time installation path until a block-device driver is available. */
 void voidfs_install_multiboot_modules(struct multiboot_info* mbi);
+
+/* Explicitly formats a drive as VoidFS. This is destructive and is not
+ * called automatically. */
+int voidfs_format_drive(unsigned int disk_index);
+int voidfs_is_persistent(void);
+unsigned int voidfs_backing_disk(void);
 
 unsigned int voidfs_file_count(void);
 const struct voidfs_file* voidfs_file_at(unsigned int index);
