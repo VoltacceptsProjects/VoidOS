@@ -17,6 +17,15 @@ BOOT_OBJ = boot/boot.o
 BIN = iso/boot/voidos.bin
 ISO = voidos.iso
 
+# .vapp packages live in vapps/ at the repo root (kept in sync with the
+# online application directory - see vapps/README.md and
+# tools/sync-vapps.sh) and get staged into iso/boot/vapps/ so
+# grub-mkrescue bundles them onto the ISO. grub.cfg loads each one as a
+# Multiboot module; VoidOS installs them into VoidFS at boot. This is
+# how packages get onto a machine with no network stack of its own.
+VAPP_SRCS = $(wildcard vapps/*.vapp)
+VAPP_STAGED = $(patsubst vapps/%,iso/boot/vapps/%,$(VAPP_SRCS))
+
 all: $(ISO)
 
 boot/boot.o: boot/boot.asm
@@ -28,11 +37,16 @@ boot/boot.o: boot/boot.asm
 $(BIN): $(BOOT_OBJ) $(KERNEL_OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
-$(ISO): $(BIN) iso/boot/grub/grub.cfg
+iso/boot/vapps/%.vapp: vapps/%.vapp
+	mkdir -p iso/boot/vapps
+	cp $< $@
+
+$(ISO): $(BIN) iso/boot/grub/grub.cfg $(VAPP_STAGED)
 	grub-mkrescue -o $@ iso
 
 clean:
 	rm -f $(BOOT_OBJ) $(KERNEL_OBJS) $(BIN) $(ISO)
+	rm -rf iso/boot/vapps
 
 run: $(ISO)
 	qemu-system-i386 -cdrom $(ISO)
