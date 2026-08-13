@@ -14,6 +14,8 @@
 #include "io.h"
 #include "serial.h"
 #include "iwlwifi.h"
+#include "appstore.h"
+#include "net.h"
 #include <stdint.h>
 
 /* Stage 3: if the 9260 is present and its firmware was baked onto the
@@ -179,6 +181,7 @@ void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
     voidfs_install_multiboot_modules(mbi);
     int found_9260 = pci_probe_network_devices();
     iwlwifi_stage3(mbi, found_9260);
+    net_init();
     generate_content(magic, mbi);
 
     int selected = 0;
@@ -216,6 +219,9 @@ void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
                 case KEY_ENTER:
                     if (selected == APPLICATIONS_SECTION) {
                         apps_run_launcher();
+                        redraw_shell = 1;
+                    } else if (selected == FILES_SECTION) {
+                        appstore_run(mbi);
                         redraw_shell = 1;
                     } else if (selected < NUM_SECTIONS - 1) {
                         selected++;
@@ -258,6 +264,11 @@ void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
                 selected = APPLICATIONS_SECTION;
                 top = section_start[selected];
                 apps_run_launcher();
+                redraw_shell = 1;
+            } else if (idx == FILES_SECTION) {
+                selected = FILES_SECTION;
+                top = section_start[selected];
+                appstore_run(mbi);
                 redraw_shell = 1;
             } else if (idx >= 0 && idx != selected) {
                 selected = idx;
