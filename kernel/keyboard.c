@@ -8,6 +8,38 @@
 
 static int expecting_extended = 0;
 static enum key decoded = KEY_NONE;
+static int shift_down = 0;
+
+#define CHAR_QUEUE_SIZE 64
+static char char_queue[CHAR_QUEUE_SIZE];
+static unsigned char char_head = 0;
+static unsigned char char_tail = 0;
+
+static void queue_char(char c) {
+    unsigned char next = (unsigned char)((char_tail + 1) % CHAR_QUEUE_SIZE);
+    if (next == char_head) return; /* drop input rather than overwrite it */
+    char_queue[char_tail] = c;
+    char_tail = next;
+}
+
+static char shifted_char(uint8_t base) {
+    static const char normal[] =
+        "1234567890-=qwertyuiop[]asdfghjkl;'`\\zxcvbnm,./";
+    static const char shifted[] =
+        "!@#$%^&*()_+QWERTYUIOP{}ASDFGHJKL:\"~|ZXCVBNM<>?";
+    static const uint8_t scan[] = {
+        0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
+        0x0C, 0x0D, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23,
+        0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2B, 0x2C, 0x2D, 0x2E,
+        0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35,
+    };
+    for (unsigned int i = 0; i < sizeof(scan); i++) {
+        if (scan[i] == base) return shift_down ? shifted[i] : normal[i];
+    }
+    if (base == 0x39) return ' ';
+    return 0;
+}
 
 void keyboard_feed_byte(uint8_t code) {
     if (code == 0xE0) {
@@ -35,14 +67,29 @@ void keyboard_feed_byte(uint8_t code) {
         return;
     }
 
+    if (base == 0x2A || base == 0x36) {
+        shift_down = !release;
+        return;
+    }
+
     if (release) return;
     if (base == 0x01) { decoded = KEY_ESC; return; }
     if (base == 0x1C) { decoded = KEY_ENTER; return; }
-    /* Any other key: not used by the viewer, dropped. */
+    if (base == 0x0E) { decoded = KEY_BACKSPACE; return; }
+
+    char printable = shifted_char(base);
+    if (printable) queue_char(printable);
 }
 
 enum key keyboard_poll_key(void) {
     enum key k = decoded;
     decoded = KEY_NONE;
     return k;
+}
+
+char keyboard_poll_char(void) {
+    if (char_head == char_tail) return 0;
+    char c = char_queue[char_head];
+    char_head = (unsigned char)((char_head + 1) % CHAR_QUEUE_SIZE);
+    return c;
 }

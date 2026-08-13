@@ -12,6 +12,13 @@ struct multiboot_mmap_entry {
 
 #define MULTIBOOT_MEMORY_AVAILABLE 1
 
+struct multiboot_module {
+    uint32_t mod_start;
+    uint32_t mod_end;
+    uint32_t string;
+    uint32_t reserved;
+} __attribute__((packed));
+
 /* Bit 12 of multiboot_info.flags: framebuffer_* fields are valid. */
 #define MULTIBOOT_INFO_FRAMEBUFFER_INFO (1 << 12)
 

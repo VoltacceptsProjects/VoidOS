@@ -6,6 +6,8 @@
 #include "pci.h"
 #include "meminfo.h"
 #include "battery.h"
+#include "apps.h"
+#include "fs.h"
 #include "keyboard.h"
 #include "mouse.h"
 #include "ps2.h"
@@ -29,7 +31,9 @@ static void power_off(void) {
     for (;;) { __asm__ volatile ("hlt"); }
 }
 
-#define NUM_SECTIONS 6
+#define NUM_SECTIONS 8
+#define APPLICATIONS_SECTION 6
+#define FILES_SECTION 7
 
 static const struct ui_section sections[NUM_SECTIONS] = {
     { "Overview", UI_ICON_GRID },
@@ -38,6 +42,8 @@ static const struct ui_section sections[NUM_SECTIONS] = {
     { "Display",  UI_ICON_DISPLAY },
     { "System",   UI_ICON_SYSTEM },
     { "Battery",  UI_ICON_BATTERY },
+    { "Apps",     UI_ICON_APPS },
+    { "Files",    UI_ICON_FILES },
 };
 
 static size_t section_start[NUM_SECTIONS];
@@ -59,6 +65,7 @@ static void print_overview(uint32_t magic) {
     terminal_writestring("  Up / Down       scroll a line at a time\n");
     terminal_writestring("  PgUp / PgDn     scroll a page at a time\n");
     terminal_writestring("  Home / End      jump to top / bottom\n");
+    terminal_writestring("  Enter           open the selected section or Apps\n");
     terminal_writestring("  Esc             shut down\n");
     terminal_writestring("  Mouse           click a section in the sidebar\n\n");
 
@@ -70,7 +77,7 @@ static void print_overview(uint32_t magic) {
     }
 
     terminal_setcolor(VGA_DARK_GREY, VGA_DARK_GREY);
-    terminal_writestring("Use Right to open the CPU section now.\n");
+    terminal_writestring("Use Right to open the CPU section now, or choose Apps to run a program.\n");
     terminal_setcolor(VGA_LIGHT_GREY, VGA_DARK_GREY);
 }
 
@@ -109,7 +116,19 @@ static void generate_content(uint32_t magic, struct multiboot_info* mbi) {
     terminal_putchar('\n');
     battery_print();
     section_end[5] = terminal_line_count() - 1;
-}void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
+
+    section_start[6] = terminal_line_count();
+    terminal_putchar('\n');
+    apps_print_launcher();
+    section_end[6] = terminal_line_count() - 1;
+
+    section_start[7] = terminal_line_count();
+    terminal_putchar('\n');
+    voidfs_print_files();
+    section_end[7] = terminal_line_count() - 1;
+}
+
+void kernel_main(uint32_t magic, struct multiboot_info* mbi) {
     terminal_initialize(mbi);
 
     /* Carve the text/scrollback grid down into the GUI's content card
@@ -124,6 +143,8 @@ static void generate_content(uint32_t magic, struct multiboot_info* mbi) {
         mouse_set_bounds((int32_t)gfx_screen_width() - 1, (int32_t)gfx_screen_height() - 1);
     }
 
+    voidfs_initialize();
+    voidfs_install_multiboot_modules(mbi);
     generate_content(magic, mbi);
 
     int selected = 0;
@@ -152,8 +173,17 @@ static void generate_content(uint32_t magic, struct multiboot_info* mbi) {
                     }
                     break;
                 case KEY_RIGHT:
-                case KEY_ENTER:
                     if (selected < NUM_SECTIONS - 1) {
+                        selected++;
+                        top = section_start[selected];
+                        redraw_shell = 1;
+                    }
+                    break;
+                case KEY_ENTER:
+                    if (selected == APPLICATIONS_SECTION) {
+                        apps_run_launcher();
+                        redraw_shell = 1;
+                    } else if (selected < NUM_SECTIONS - 1) {
                         selected++;
                         top = section_start[selected];
                         redraw_shell = 1;
@@ -190,7 +220,12 @@ static void generate_content(uint32_t magic, struct multiboot_info* mbi) {
 
         if (ms->left_clicked) {
             int idx = ui_hit_test_sidebar((uint32_t)ms->x, (uint32_t)ms->y, NUM_SECTIONS);
-            if (idx >= 0 && idx != selected) {
+            if (idx == APPLICATIONS_SECTION) {
+                selected = APPLICATIONS_SECTION;
+                top = section_start[selected];
+                apps_run_launcher();
+                redraw_shell = 1;
+            } else if (idx >= 0 && idx != selected) {
                 selected = idx;
                 top = section_start[selected];
                 redraw_shell = 1;

@@ -10,7 +10,7 @@ LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
 # kernel/int64_div.c provides __udivdi3/__umoddi3/__divdi3/__moddi3/
 # __udivmoddi4 ourselves (see that file), so aml.c's genuine 64-bit
 # AML Divide/Mod math links with plain ld - no -lgcc/multilib needed.
-KERNEL_SRCS = kernel/kernel.c kernel/vga.c kernel/ui.c kernel/cpuinfo.c kernel/smbios.c kernel/pci.c kernel/meminfo.c kernel/keyboard.c kernel/mouse.c kernel/ps2.c kernel/acpi.c kernel/aml.c kernel/battery.c kernel/int64_div.c
+KERNEL_SRCS = kernel/kernel.c kernel/vga.c kernel/ui.c kernel/apps.c kernel/fs.c kernel/cpuinfo.c kernel/smbios.c kernel/pci.c kernel/meminfo.c kernel/keyboard.c kernel/mouse.c kernel/ps2.c kernel/acpi.c kernel/aml.c kernel/battery.c kernel/int64_div.c
 KERNEL_OBJS = $(KERNEL_SRCS:.c=.o)
 BOOT_OBJ = boot/boot.o
 

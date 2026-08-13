@@ -73,6 +73,19 @@ static void draw_icon(uint32_t x, uint32_t y, int icon, uint32_t color) {
             gfx_fill_rect(x + 16, y + 7, 3, 6, color);   /* terminal nub */
             gfx_fill_rect(x + 4, y + 7, 9, 6, color);    /* charge level */
             break;
+        case UI_ICON_APPS:
+            gfx_rect_outline(x + 2, y + 2, 16, 16, color);
+            gfx_fill_rect(x + 6, y + 6, 3, 3, color);
+            gfx_fill_rect(x + 12, y + 6, 3, 3, color);
+            gfx_fill_rect(x + 6, y + 12, 3, 3, color);
+            gfx_fill_rect(x + 12, y + 12, 3, 3, color);
+            break;
+        case UI_ICON_FILES:
+            gfx_fill_rect(x + 1, y + 4, 18, 14, color);
+            gfx_fill_rect(x + 3, y + 2, 8, 3, color);
+            gfx_fill_rect(x + 4, y + 8, 12, 2, gfx_palette_color(VGA_DARK_GREY));
+            gfx_fill_rect(x + 4, y + 12, 9, 2, gfx_palette_color(VGA_DARK_GREY));
+            break;
         default:
             break;
     }

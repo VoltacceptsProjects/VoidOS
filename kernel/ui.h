@@ -22,6 +22,8 @@ enum {
     UI_ICON_DISPLAY,
     UI_ICON_SYSTEM,
     UI_ICON_BATTERY,
+    UI_ICON_APPS,
+    UI_ICON_FILES,
 };
 
 /* Draws the full shell (background, top bar, sidebar with the given

@@ -23,6 +23,7 @@ enum key {
     KEY_HOME,
     KEY_END,
     KEY_ENTER,
+    KEY_BACKSPACE,
     KEY_ESC,
 };
 
@@ -35,5 +36,10 @@ void keyboard_feed_byte(uint8_t code);
  * time round the main loop to make sure any waiting bytes have been
  * fed in. */
 enum key keyboard_poll_key(void);
+
+/* Non-blocking printable character queue used by built-in applications.
+ * Returns zero when no character is waiting. The decoder understands the
+ * common US keyboard layout and tracks Shift for letters and punctuation. */
+char keyboard_poll_char(void);
 
 #endif
