@@ -37,7 +37,10 @@ static void iwlwifi_stage3(struct multiboot_info* mbi, int found_9260) {
     struct iwlwifi_fw_image fw;
     if (!iwlwifi_parse_firmware(fw_data, fw_size, &fw)) return;
 
-    iwlwifi_bringup(pci_get_9260_bar0());
+    uint32_t bar0 = pci_get_9260_bar0();
+    if (iwlwifi_bringup(bar0)) {
+        iwlwifi_load_firmware(bar0, &fw);
+    }
 }
 
 /* There's no ACPI table parser in this kernel, so we can't walk to the

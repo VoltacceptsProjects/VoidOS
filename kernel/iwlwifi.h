@@ -80,4 +80,61 @@ int iwlwifi_parse_firmware(const uint8_t* data, uint32_t size,
  * of the 9260's BAR0 MMIO window (see pci_probe_network_devices()). */
 int iwlwifi_bringup(uint32_t bar0);
 
+/* --- firmware self-load (context-info method) --------------------------
+ *
+ * Correction to the note above: the 9260 is an "8000 family" part
+ * (Thunder Peak MAC / Jefferson Peak RF). Those parts, unlike the
+ * older 3160/7260-era chips, do NOT use the FH_TCSR/TFDIB per-chunk
+ * DMA channel to push firmware into SRAM. They use a newer, simpler
+ * "context info" self-load: the driver builds one struct in memory
+ * describing where each firmware section lives (by physical address),
+ * points a single CSR register at it, and the device DMAs everything
+ * in itself. Confirmed by reading the current upstream iwlwifi source
+ * (drivers/net/wireless/intel/iwlwifi/pcie/ctxt-info.c and
+ * iwl-context-info.h) - the struct layout and CSR_CTXT_INFO_BA offset
+ * below are taken from there, not guessed.
+ *
+ * What iwlwifi_load_firmware() actually does:
+ *   1. Splits the already-parsed IWL_UCODE_TLV_SEC_RT sections into
+ *      LMAC / UMAC groups using the CPU1/CPU2 separator marker (same
+ *      split iwl_pcie_init_fw_sec() does upstream). The IWL_UCODE_TLV_SEC_INIT
+ *      (calibration) image and anything after the paging separator
+ *      are not loaded - see the honest gaps below.
+ *   2. Points the context-info DRAM map entries directly at the
+ *      firmware section bytes already sitting in the Multiboot module
+ *      - this kernel never enables paging, so a pointer here already
+ *      *is* the physical address the device needs, with no bounce
+ *      buffer or copy required (that's a genuine simplification a
+ *      paging OS like Linux doesn't get).
+ *   3. Builds a minimal 8-entry RX buffer ring and an empty (never
+ *      posted-to) TX command ring, because the context-info struct
+ *      has no "optional" field for either - the device expects both
+ *      to be present and validly sized before it will boot, even
+ *      though nothing past this file's own poll loop uses them.
+ *   4. Writes the struct's physical address to CSR_CTXT_INFO_BA (CSR
+ *      offset 0x40, a 64-bit register) to kick off self-load, then
+ *      polls CSR_INT for CSR_INT_BIT_ALIVE (bit 0) - "uCode interrupts
+ *      once it initializes", straight from the upstream comment on
+ *      that bit.
+ *
+ * What this does NOT do, stated as plainly as the file above does:
+ *   - It does not parse the ALIVE notification the firmware posts to
+ *     the RX ring (UMAC/LMAC error-table pointers, firmware status,
+ *     etc). The 8-entry RX ring exists only so the device has
+ *     somewhere valid to land that packet; this file never reads it.
+ *     Getting from "the ALIVE interrupt fired" to "I decoded the
+ *     ALIVE command" is most of what a real RX transport is.
+ *   - It does not load the INIT/calibration image, service any host
+ *     command, bring up TX, or implement any 802.11 MAC behavior.
+ *     Same scope boundary as iwlwifi_bringup() above, just moved one
+ *     checkpoint further: this now gets far enough to tell you,
+ *     definitively and from real hardware, whether the firmware
+ *     itself booted - which CSR_GP_CNTRL alone never could.
+ *
+ * Call only after iwlwifi_bringup() has returned 1 (MAC clock must be
+ * running before the device will act on CSR_CTXT_INFO_BA). Returns 1
+ * if CSR_INT_BIT_ALIVE was observed within the timeout, 0 otherwise -
+ * check the serial log either way, it explains what it saw. */
+int iwlwifi_load_firmware(uint32_t bar0, const struct iwlwifi_fw_image* fw);
+
 #endif

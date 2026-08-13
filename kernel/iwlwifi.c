@@ -243,10 +243,9 @@ int iwlwifi_bringup(uint32_t bar0) {
 
     dump_csr(bar0);
     if (ready) {
-        serial_writestring("[iwlwifi] MAC clock ready. Stopping here - firmware "
-                            "SRAM load (FH DMA), ALIVE handshake, and the 802.11 "
-                            "MAC layer are not implemented. See kernel/iwlwifi.h "
-                            "for what's left.\n");
+        serial_writestring("[iwlwifi] MAC clock ready. Firmware self-load "
+                            "(context info) is the next step - see "
+                            "iwlwifi_load_firmware().\n");
     } else {
         serial_writestring("[iwlwifi] timed out waiting for MAC_CLOCK_READY. On "
                             "real hardware this usually means RF-kill is asserted "
@@ -255,4 +254,246 @@ int iwlwifi_bringup(uint32_t bar0) {
                             "doesn't do yet.\n");
     }
     return ready;
+}
+
+/* --- firmware self-load (context-info method) ---------------------------
+ * Struct layout and field meanings taken from upstream
+ * drivers/net/wireless/intel/iwlwifi/pcie/iwl-context-info.h. Field
+ * names kept close to upstream so this is diffable against the real
+ * thing; only the __le64/__packed macros are swapped for plain
+ * uint64_t + __attribute__((packed)), since x86 is little-endian
+ * already and this kernel has no <linux/types.h> to pull in.
+ */
+
+#define IWL_CTXT_MAX_DRAM_ENTRY 64
+#define CSR_CTXT_INFO_BA        0x040u
+
+#define IWL_CTXT_INFO_TFD_FORMAT_LONG (1u << 8)          /* bit 8 */
+#define IWL_CTXT_INFO_RB_CB_SIZE_SHIFT 4                  /* bits 4:7 */
+#define IWL_CTXT_INFO_RB_SIZE_SHIFT    9                  /* bits 9:12 */
+#define IWL_CTXT_INFO_RB_SIZE_4K       0x4u
+
+#define CSR_INT_BIT_ALIVE (1u << 0)
+
+struct iwl_ctx_info_version {
+    uint16_t mac_id;
+    uint16_t version;
+    uint16_t size;      /* struct size in DWs */
+    uint16_t reserved;
+} __attribute__((packed));
+
+struct iwl_ctx_info_control {
+    uint32_t control_flags;
+    uint32_t reserved;
+} __attribute__((packed));
+
+struct iwl_ctx_info_rbd_cfg {
+    uint64_t free_rbd_addr;
+    uint64_t used_rbd_addr;
+    uint64_t status_wr_ptr;
+} __attribute__((packed));
+
+struct iwl_ctx_info_hcmd_cfg {
+    uint64_t cmd_queue_addr;
+    uint8_t  cmd_queue_size;
+    uint8_t  reserved[7];
+} __attribute__((packed));
+
+struct iwl_ctx_info_dump_cfg {
+    uint64_t core_dump_addr;
+    uint32_t core_dump_size;
+    uint32_t reserved;
+} __attribute__((packed));
+
+struct iwl_ctx_info_edbg_cfg {
+    uint64_t early_debug_addr;
+    uint32_t early_debug_size;
+    uint32_t reserved;
+} __attribute__((packed));
+
+struct iwl_ctx_info_pnvm_cfg {
+    uint64_t platform_nvm_addr;
+    uint32_t platform_nvm_size;
+    uint32_t reserved;
+} __attribute__((packed));
+
+struct iwl_ctx_info_dram {
+    uint64_t umac_img[IWL_CTXT_MAX_DRAM_ENTRY];
+    uint64_t lmac_img[IWL_CTXT_MAX_DRAM_ENTRY];
+    uint64_t virtual_img[IWL_CTXT_MAX_DRAM_ENTRY];
+} __attribute__((packed));
+
+struct iwl_context_info {
+    struct iwl_ctx_info_version version;
+    struct iwl_ctx_info_control control;
+    uint64_t reserved0;
+    struct iwl_ctx_info_rbd_cfg rbd_cfg;
+    struct iwl_ctx_info_hcmd_cfg hcmd_cfg;
+    uint32_t reserved1[4];
+    struct iwl_ctx_info_dump_cfg dump_cfg;
+    struct iwl_ctx_info_edbg_cfg edbg_cfg;
+    struct iwl_ctx_info_pnvm_cfg pnvm_cfg;
+    uint32_t reserved2[16];
+    struct iwl_ctx_info_dram dram;
+    uint32_t reserved3[16];
+} __attribute__((packed));
+
+/* Statically allocated - this kernel has no heap. All of it needs to
+ * sit at a fixed, DMA-visible address, which "static" already gives
+ * us here since there's no paging to fight with. */
+#define IWLWIFI_RX_RB_COUNT 8
+#define IWLWIFI_RX_RB_SIZE  4096
+#define IWLWIFI_TX_CMDQ_ENTRIES 16
+
+static struct iwl_context_info g_ctxt_info __attribute__((aligned(16)));
+static uint64_t g_rx_free_rbd[IWLWIFI_RX_RB_COUNT] __attribute__((aligned(16)));
+static uint64_t g_rx_used_rbd[IWLWIFI_RX_RB_COUNT] __attribute__((aligned(16)));
+static uint8_t  g_rx_buffers[IWLWIFI_RX_RB_COUNT][IWLWIFI_RX_RB_SIZE] __attribute__((aligned(4096)));
+struct iwl_rb_status {
+    uint16_t closed_rb_num;
+    uint16_t closed_fr_num;
+    uint16_t finished_rb_num;
+    uint16_t finished_fr_num;
+    uint32_t reserved;
+} __attribute__((packed));
+static struct iwl_rb_status g_rb_status __attribute__((aligned(16)));
+/* Never posted to - just a validly-sized, empty ring so the device has
+ * something to point at. See the header comment for why this exists
+ * but isn't used. */
+static uint8_t g_tx_cmdq[IWLWIFI_TX_CMDQ_ENTRIES * 128] __attribute__((aligned(256)));
+
+static void csr_write64(uint32_t bar0, uint32_t offset, uint64_t val) {
+    csr_write(bar0, offset, (uint32_t)(val & 0xFFFFFFFFu));
+    csr_write(bar0, offset + 4, (uint32_t)(val >> 32));
+}
+
+/* ilog2(x) - 3, matching upstream TFD_QUEUE_CB_SIZE() - x must be a
+ * power of two. */
+static uint32_t cb_size_exponent(uint32_t entries) {
+    uint32_t log2 = 0;
+    while ((1u << log2) < entries) log2++;
+    return log2 - 3;
+}
+
+int iwlwifi_load_firmware(uint32_t bar0, const struct iwlwifi_fw_image* fw) {
+    serial_writestring("[iwlwifi] building context-info block for firmware "
+                        "self-load\n");
+
+    /* Split IWL_UCODE_TLV_SEC_RT sections into LMAC (before the first
+     * CPU1/CPU2 separator) and UMAC (between the first and second
+     * separator) groups, same split upstream's iwl_pcie_init_fw_sec()
+     * does. Anything from the paging separator onward (paged/virtual
+     * image) is skipped - not loaded, not counted, just logged. */
+    static uint64_t lmac_tmp[IWL_CTXT_MAX_DRAM_ENTRY];
+    static uint64_t umac_tmp[IWL_CTXT_MAX_DRAM_ENTRY];
+    uint32_t lmac_n = 0, umac_n = 0, paging_n = 0;
+    int seen_seps = 0;
+
+    for (uint32_t i = 0; i < fw->num_sections; i++) {
+        const struct iwlwifi_fw_section* s = &fw->sections[i];
+        if (s->is_init) continue; /* calibration image - not loaded here */
+
+        if (s->is_separator) {
+            seen_seps++;
+            continue;
+        }
+
+        uint64_t phys = (uint64_t)(uintptr_t)s->data;
+        if (seen_seps == 0) {
+            if (lmac_n < IWL_CTXT_MAX_DRAM_ENTRY)
+                lmac_tmp[lmac_n++] = phys;
+        } else if (seen_seps == 1) {
+            if (umac_n < IWL_CTXT_MAX_DRAM_ENTRY)
+                umac_tmp[umac_n++] = phys;
+        } else {
+            paging_n++; /* skipped */
+        }
+    }
+
+    serial_writestring("[iwlwifi]   lmac sections=");
+    serial_write_uint(lmac_n);
+    serial_writestring(" umac sections=");
+    serial_write_uint(umac_n);
+    serial_writestring(" paging sections skipped=");
+    serial_write_uint(paging_n);
+    serial_writestring("\n");
+
+    if (lmac_n == 0) {
+        serial_writestring("[iwlwifi]   no LMAC section found before the first "
+                            "separator - firmware image doesn't look like the "
+                            "shape iwl_pcie_init_fw_sec() expects, aborting\n");
+        return 0;
+    }
+
+    /* RX ring: 8 x 4K buffers, long-TFD-format, physical addresses of
+     * our static buffers (no paging => pointer == physical address). */
+    for (int i = 0; i < IWLWIFI_RX_RB_COUNT; i++) {
+        g_rx_free_rbd[i] = (uint64_t)(uintptr_t)&g_rx_buffers[i][0];
+        g_rx_used_rbd[i] = 0;
+    }
+
+    for (uint32_t i = 0; i < sizeof(g_ctxt_info); i++)
+        ((uint8_t*)&g_ctxt_info)[i] = 0;
+
+    g_ctxt_info.version.mac_id = (uint16_t)csr_read(bar0, CSR_HW_REV);
+    g_ctxt_info.version.version = 0;
+    g_ctxt_info.version.size = (uint16_t)(sizeof(g_ctxt_info) / 4);
+
+    uint32_t rb_cb_exp = cb_size_exponent(IWLWIFI_RX_RB_COUNT);
+    g_ctxt_info.control.control_flags =
+        IWL_CTXT_INFO_TFD_FORMAT_LONG |
+        (rb_cb_exp << IWL_CTXT_INFO_RB_CB_SIZE_SHIFT) |
+        (IWL_CTXT_INFO_RB_SIZE_4K << IWL_CTXT_INFO_RB_SIZE_SHIFT);
+
+    g_ctxt_info.rbd_cfg.free_rbd_addr = (uint64_t)(uintptr_t)g_rx_free_rbd;
+    g_ctxt_info.rbd_cfg.used_rbd_addr = (uint64_t)(uintptr_t)g_rx_used_rbd;
+    g_ctxt_info.rbd_cfg.status_wr_ptr = (uint64_t)(uintptr_t)&g_rb_status;
+
+    g_ctxt_info.hcmd_cfg.cmd_queue_addr = (uint64_t)(uintptr_t)g_tx_cmdq;
+    g_ctxt_info.hcmd_cfg.cmd_queue_size =
+        (uint8_t)cb_size_exponent(IWLWIFI_TX_CMDQ_ENTRIES);
+
+    for (uint32_t i = 0; i < lmac_n; i++) g_ctxt_info.dram.lmac_img[i] = lmac_tmp[i];
+    for (uint32_t i = 0; i < umac_n; i++) g_ctxt_info.dram.umac_img[i] = umac_tmp[i];
+
+    serial_writestring("[iwlwifi] context-info block ready at ");
+    serial_write_hex((uint32_t)(uintptr_t)&g_ctxt_info);
+    serial_writestring(", size=");
+    serial_write_uint((uint32_t)sizeof(g_ctxt_info));
+    serial_writestring(" bytes\n");
+
+    /* Clear any stale interrupt bits, then let the ALIVE interrupt
+     * through (upstream unmasks before every fw boot, so match it). */
+    csr_write(bar0, CSR_INT, 0xFFFFFFFFu);
+    csr_write(bar0, CSR_INT_MASK, CSR_INT_BIT_ALIVE);
+
+    serial_writestring("[iwlwifi] writing CSR_CTXT_INFO_BA - firmware self-load "
+                        "starts now\n");
+    csr_write64(bar0, CSR_CTXT_INFO_BA, (uint64_t)(uintptr_t)&g_ctxt_info);
+
+    int alive = 0;
+    for (uint32_t tries = 0; tries < 5000; tries++) {
+        if (csr_read(bar0, CSR_INT) & CSR_INT_BIT_ALIVE) {
+            alive = 1;
+            break;
+        }
+        short_delay(10);
+    }
+
+    if (alive) {
+        csr_write(bar0, CSR_INT, CSR_INT_BIT_ALIVE); /* ack, write-1-to-clear */
+        serial_writestring("[iwlwifi] CSR_INT_BIT_ALIVE seen - firmware booted "
+                            "and self-initialized. This confirms the ucode is "
+                            "running on the device. Stopping here: the ALIVE "
+                            "notification itself (on the RX ring built above) "
+                            "isn't parsed, and there's no TX/RX datapath or "
+                            "802.11 MAC past this point yet.\n");
+    } else {
+        serial_writestring("[iwlwifi] timed out waiting for CSR_INT_BIT_ALIVE. "
+                            "Firmware never signaled it booted - check the "
+                            "context-info block layout above against a real "
+                            "capture (or a real card) before assuming the "
+                            "hardware itself is at fault.\n");
+    }
+    return alive;
 }
