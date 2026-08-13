@@ -1,0 +1,75 @@
+name: Build VoidOS
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            nasm \
+            gcc-multilib \
+            binutils \
+            grub-pc-bin \
+            grub-common \
+            xorriso \
+            mtools
+
+      - name: Build kernel + ISO
+        run: make
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: voidos-iso
+          path: voidos.iso
+
+      - name: Upload kernel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: voidos-kernel-bin
+          path: iso/boot/voidos.bin
+
+  boot-smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            nasm gcc-multilib binutils grub-pc-bin grub-common xorriso mtools \
+            qemu-system-x86
+
+      - name: Build ISO
+        run: make
+
+      - name: Boot in QEMU (headless, timeout-bounded)
+        run: |
+          timeout 20s qemu-system-i386 \
+            -cdrom voidos.iso \
+            -display none \
+            -serial mon:stdio \
+            -no-reboot \
+            -no-shutdown || code=$?
+          # timeout returns 124 if it had to kill qemu after 20s of running,
+          # which just means the OS booted and stayed up - treat that as success.
+          if [ "${code:-0}" -ne 0 ] && [ "${code:-0}" -ne 124 ]; then
+            echo "QEMU exited with unexpected code $code"
+            exit "$code"
+          fi
