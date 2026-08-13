@@ -12,28 +12,48 @@
 #define PS2_STATUS_INPUT_FULL  0x02 /* set: controller hasn't consumed our last command/data byte yet */
 #define PS2_STATUS_AUX_DATA    0x20 /* set: the waiting byte came from the mouse, not the keyboard */
 
-static void wait_input_clear(void) {
-    while (inb(PS2_STATUS_PORT) & PS2_STATUS_INPUT_FULL) {
+/* Every PS/2 wait below is timeout-bounded (matching the pattern
+ * disk.c already uses for ATA status polling) rather than a bare
+ * while(){} spin. A controller or device that never responds - a
+ * disconnected/absent mouse, a quirky emulator, firmware that behaves
+ * slightly differently than real hardware - must never be able to hang
+ * the whole boot before the shell ever gets drawn; it's far better to
+ * fall through with an unresponsive mouse than to sit at a blank
+ * background-colored screen forever. */
+#define PS2_TIMEOUT 100000
+
+static int wait_input_clear(void) {
+    for (uint32_t i = 0; i < PS2_TIMEOUT; i++) {
+        if (!(inb(PS2_STATUS_PORT) & PS2_STATUS_INPUT_FULL)) return 1;
     }
+    return 0;
 }
 
-static void wait_output_full(void) {
-    while (!(inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL)) {
+static int wait_output_full(void) {
+    for (uint32_t i = 0; i < PS2_TIMEOUT; i++) {
+        if (inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL) return 1;
     }
+    return 0;
 }
 
+/* Returns the byte read, or 0 (with no side effect beyond the wait) if
+ * the controller never raised output-full within the timeout. 0 isn't
+ * ambiguous with a real timeout for our purposes here: every caller
+ * either only cares about PS2_ACK (which is never 0) or is reading the
+ * best-effort config byte, where a timeout already means the
+ * controller isn't behaving and further config attempts are moot. */
 static uint8_t read_data(void) {
-    wait_output_full();
+    if (!wait_output_full()) return 0;
     return inb(PS2_DATA_PORT);
 }
 
 static void write_cmd(uint8_t cmd) {
-    wait_input_clear();
+    (void)wait_input_clear(); /* best-effort: write anyway even on timeout */
     outb(PS2_CMD_PORT, cmd);
 }
 
 static void write_data(uint8_t val) {
-    wait_input_clear();
+    (void)wait_input_clear();
     outb(PS2_DATA_PORT, val);
 }
 
@@ -50,7 +70,7 @@ static void write_data(uint8_t val) {
  * turns into a cursor that never stops "trailing" and clicks that never
  * register: X/Y deltas and the button-state byte end up swapped. */
 static void flush_output_buffer(void) {
-    while (inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL) {
+    for (int i = 0; i < 64 && (inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL); i++) {
         (void)inb(PS2_DATA_PORT);
     }
 }
