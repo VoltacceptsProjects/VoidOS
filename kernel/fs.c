@@ -448,11 +448,7 @@ void voidfs_print_files(void) {
     } else {
         terminal_writestring("No VoidFS volume mounted; using RAM storage\n");
     }
-    /* Show only the drive VoidOS is actually installed on (or, if not
-     * installed yet, drive 0 - the boot/system disk) rather than every
-     * ATA position the controller can see. A machine can have several
-     * disks attached that have nothing to do with this OS. */
-    disk_print_drive(persistent_volume ? persistent_disk : 0);
+    disk_print_info();
     terminal_writestring("\n");
     if (!directory_count) {
         terminal_setcolor(VGA_DARK_GREY, VGA_DARK_GREY);

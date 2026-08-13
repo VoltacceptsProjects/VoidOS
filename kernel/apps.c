@@ -71,14 +71,9 @@ static void draw_app_footer(const char* hint) {
                   gfx_palette_color(VGA_DARK_GREY), 1);
 }
 
-static void redraw_cursor(int content_changed) {
+static void redraw_cursor(void) {
     const struct mouse_state* ms = mouse_get_state();
-    /* Only invalidate the saved-backing sprite when something underneath
-     * it was actually repainted this frame. ui_draw_cursor() erases the
-     * cursor by restoring those saved pixels; invalidating on every call
-     * (including plain moves) skips that restore permanently, which is
-     * what was leaving an arrow-shaped trail at every past position. */
-    if (content_changed) ui_cursor_invalidate();
+    ui_cursor_invalidate();
     ui_draw_cursor(ms->x, ms->y);
 }
 
@@ -272,7 +267,7 @@ static void run_calculator(void) {
             draw_app_footer("Enter: calculate   C: clear   Backspace: delete   Esc: close");
             dirty = 0;
         }
-        if (redrew_content || moved) redraw_cursor(redrew_content);
+        if (redrew_content || moved) redraw_cursor();
         mouse_clear_events();
     }
 }
@@ -341,7 +336,7 @@ static void run_terminal(void) {
             draw_app_footer("Enter: run command   Backspace: delete   Esc: close");
             dirty = 0;
         }
-        if (redrew_content || moved) redraw_cursor(redrew_content);
+        if (redrew_content || moved) redraw_cursor();
         mouse_clear_events();
     }
 }
@@ -384,7 +379,7 @@ static void run_scratchpad(void) {
             draw_app_footer("Type to write   Backspace: delete   Esc: close");
             dirty = 0;
         }
-        if (redrew_content || moved) redraw_cursor(redrew_content);
+        if (redrew_content || moved) redraw_cursor();
         mouse_clear_events();
     }
 }
@@ -442,6 +437,6 @@ void apps_run_launcher(void) {
             dirty = 0;
         }
         /* Movement only repaints the small cursor backing rectangle. */
-        if (moved || redrew_content) redraw_cursor(redrew_content);
+        if (moved || redrew_content) redraw_cursor();
     }
 }

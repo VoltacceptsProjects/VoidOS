@@ -23,6 +23,5 @@ int disk_read_sector(unsigned int index, uint32_t lba, uint8_t* buffer);
 int disk_write_sector(unsigned int index, uint32_t lba, const uint8_t* buffer);
 
 void disk_print_info(void);
-void disk_print_drive(unsigned int index);
 
 #endif
