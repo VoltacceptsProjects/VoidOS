@@ -37,6 +37,12 @@ xfce4-terminal
 xfce4-taskmanager
 file-roller
 
+# --- Persistent storage (VoidOS Persistent Drive / .vospd) ---
+udisks2
+e2fsprogs
+zenity
+libnotify-bin
+
 # --- Utilities ---
 sudo
 curl

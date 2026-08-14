@@ -36,6 +36,17 @@ X-GNOME-Autostart-enabled=true
 NoDisplay=true
 DESK
 
+# Show a one-time notification pointing new users at the Persistent Drive
+# setup tool, so "no install needed" persistence is actually discoverable.
+cat > /etc/xdg/autostart/voidos-persistence-nudge.desktop << 'DESK'
+[Desktop Entry]
+Type=Application
+Name=VoidOS Persistence Nudge
+Exec=voidos-persistence-nudge
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+DESK
+
 # Set wallpaper + panel/dock defaults for new users via xfce4 xml (already placed by includes.chroot)
 # Set plymouth boot theme
 if [ -d /usr/share/plymouth/themes/voidos ]; then
@@ -53,5 +64,12 @@ background = /usr/share/backgrounds/voidos/wallpaper.svg
 default-user-image = #avatar-default
 indicators = ~host;~spacer;~clock;~spacer;~session;~language;~power
 GRT
+
+# Make sure the Persistent Drive setup tool is executable regardless of
+# how includes.chroot's permission bits survived getting here (e.g. a
+# GitHub web upload of the repo strips +x, same caveat as auto/config --
+# see README).
+chmod +x /usr/local/bin/voidos-persistence-setup 2>/dev/null || true
+chmod +x /usr/local/bin/voidos-persistence-nudge 2>/dev/null || true
 
 echo "=== VoidOS: theme applied ==="

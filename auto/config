@@ -11,7 +11,7 @@ lb config noauto \
     --iso-application "VoidOS" \
     --iso-publisher "VoidOS Project" \
     --iso-volume "VoidOS" \
-    --bootappend-live "boot=live components username=void hostname=voidos quiet splash" \
+    --bootappend-live "boot=live components username=void hostname=voidos quiet splash persistence persistence-label=VoidOS.vospd" \
     --debian-installer false \
     --memtest none \
     --win32-loader false \

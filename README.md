@@ -89,6 +89,29 @@ Just push this repo to GitHub. The workflow at `.github/workflows/build.yml`:
 You can trigger it manually from the **Actions** tab ("Run workflow"), on every push to `main`, or on a version tag.
 Build takes roughly 20–40 minutes on the free GitHub-hosted runners.
 
+## Persistent storage without installing (VoidOS Persistent Drive / `.vospd`)
+
+VoidOS boots as a normal live system, but it doesn't have to forget everything on reboot. From the
+Start menu, run **VoidOS Persistent Drive** (`voidos-persistence-setup`) and pick any writable drive
+-- an internal partition, a second USB stick, whatever you've got. It creates a `VoidOS.vospd` file
+there: a loopback ext4 filesystem image that holds your persistent `/`.
+
+That works because live-boot's default `persistence-storage=file,filesystem` setting already makes it
+probe every readable filesystem's *top-level root* at boot for an image file matching
+`persistence-label`. `auto/config` sets `persistence-label=VoidOS.vospd` in `--bootappend-live`, so any
+drive with a `VoidOS.vospd` at its root (containing a `persistence.conf` with `/ union`, which the setup
+tool writes for you) is picked up automatically on the next boot -- no installer, no dedicated partition,
+no boot menu options to remember. Plug the drive in, boot VoidOS, it's just there.
+
+A few things worth knowing:
+- The `.vospd` file must sit at the drive's root, not in a subfolder -- the setup tool checks this for you.
+- FAT32 caps any single file at 4 GiB; use exFAT, NTFS, or ext4 if you want a bigger Persistent Drive.
+- The image is unencrypted by default (matching live-boot's `persistence-encryption=none` default). If
+  the drive could end up in someone else's hands, treat it like any other unencrypted storage.
+- `config/includes.chroot/usr/local/bin/voidos-persistence-setup` is the whole implementation -- it's a
+  plain bash + zenity script using `udisksctl` (no root needed for the desktop user at the console) and
+  `mkfs.ext4` (which can format a plain file directly, no loop device needed for that step).
+
 ## Customizing
 
 - **Add/remove packages**: edit `config/package-lists/voidos.list.chroot`
@@ -97,6 +120,7 @@ Build takes roughly 20–40 minutes on the free GitHub-hosted runners.
 - **Change accent color**: edit the `@define-color accent` line in
   `config/includes.chroot/usr/share/themes/VoidUI-gtk/gtk-3.0/gtk.css`
 - **Distro name/branding**: edit `config/hooks/0100-branding.chroot`
+- **Change the persistence filename/label**: edit `persistence-label=` in `--bootappend-live` in `auto/config`
 
 ## Why XFCE + picom instead of GNOME/KDE?
 
