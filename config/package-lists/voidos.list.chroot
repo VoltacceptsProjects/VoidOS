@@ -1,5 +1,6 @@
 # --- Base system ---
 linux-image-amd64
+isolinux
 task-xfce-desktop
 xfce4
 xfce4-goodies
