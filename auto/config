@@ -8,7 +8,6 @@ lb config noauto \
     --archive-areas "main contrib non-free non-free-firmware" \
     --binary-images iso-hybrid \
     --architecture amd64 \
-    --linux-flavours amd64 \
     --iso-application "VoidOS" \
     --iso-publisher "VoidOS Project" \
     --iso-volume "VoidOS" \
