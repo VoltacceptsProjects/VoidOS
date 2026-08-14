@@ -79,53 +79,6 @@ jobs:
           fi
           echo "Confirmed: Debian mode, targeting bookworm, security repo disabled."
 
-      - name: Work around missing 'rsvg' binary in live-build's syslinux step
-        # Ubuntu's "live-build" apt package is a very old snapshot (3.0~a57,
-        # from 2012). Its binary_syslinux script still shells out to the
-        # legacy `rsvg` command to render config/bootloaders/isolinux/splash.svg.in
-        # into splash.png. Modern librsvg2-bin (2.x, pulled in automatically
-        # during this stage since we target bookworm) only ships `rsvg-convert`
-        # -- the plain `rsvg` CLI was dropped from the package years ago.
-        # Without it, live-build hits "/usr/bin/env: 'rsvg': No such file or
-        # directory", silently aborts partway through, and no .iso is produced
-        # (the failure doesn't surface until the later "no ISO was produced"
-        # check, since `lb build`'s exit code is swallowed by `tee`).
-        #
-        # Fix: provide a tiny `rsvg` shim on PATH that forwards to
-        # `rsvg-convert`, translating the old positional "infile outfile"
-        # calling convention into `rsvg-convert ... -o outfile infile`.
-        run: |
-          sudo tee /usr/local/bin/rsvg > /dev/null <<'EOF'
-          #!/bin/bash
-          # Compatibility shim: old `rsvg` CLI -> modern `rsvg-convert`.
-          args=()
-          positional=()
-          have_o=0
-          while [ $# -gt 0 ]; do
-            case "$1" in
-              -o|--output)
-                have_o=1
-                args+=("$1" "$2")
-                shift 2
-                ;;
-              -*)
-                args+=("$1")
-                shift
-                ;;
-              *)
-                positional+=("$1")
-                shift
-                ;;
-            esac
-          done
-          if [ "$have_o" -eq 0 ] && [ "${#positional[@]}" -eq 2 ]; then
-            exec rsvg-convert "${args[@]}" -o "${positional[1]}" "${positional[0]}"
-          else
-            exec rsvg-convert "${args[@]}" "${positional[@]}"
-          fi
-          EOF
-          sudo chmod +x /usr/local/bin/rsvg
-
       - name: Build the VoidOS ISO
         env:
           LB_APT_INDICES: "false"
