@@ -1,7 +1,9 @@
 # VoidOS
 
 A modern, glassmorphism-styled Linux distribution built on **Debian 12 (bookworm)** using `live-build`.
-Desktop: XFCE4 + `picom` (real background blur/transparency) + a custom "VoidGlass" GTK/xfwm theme + a Plank dock.
+Desktop: XFCE4 + `picom` (real background blur/transparency) + a custom "VoidUI" GTK/xfwm theme, laid
+out as a single Windows 11-style bottom taskbar (centered Start + Task View + running apps) with
+macOS-style vibrancy (blur, translucency, rounded floating panels) throughout.
 
 VoidOS is not a from-scratch kernel — it uses the stock Debian/Linux kernel and packaging tools, and layers
 branding, theming, and a curated package set on top via `live-build`. This is the standard, realistic way to
@@ -19,8 +21,8 @@ voidos/
 │   ├── hooks/                              # chroot scripts: rsvg shim + branding + theme install
 │   └── includes.chroot/                   # files copied verbatim into the ISO's filesystem
 │       ├── etc/skel/.config/picom.conf            # blur/glass compositor config
-│       ├── usr/share/themes/VoidGlass-gtk/        # GTK3 glass theme (CSS)
-│       ├── usr/share/themes/VoidGlass-xfwm/       # window border theme
+│       ├── usr/share/themes/VoidUI-gtk/        # GTK3 glass theme (CSS)
+│       ├── usr/share/themes/VoidUI-xfwm/       # window border theme
 │       ├── usr/share/backgrounds/voidos/          # generated wallpaper
 │       ├── usr/share/plymouth/themes/voidos/      # boot splash
 │       └── etc/lightdm/...                        # login screen theme
@@ -93,7 +95,7 @@ Build takes roughly 20–40 minutes on the free GitHub-hosted runners.
 - **Change wallpaper**: replace `config/includes.chroot/usr/share/backgrounds/voidos/wallpaper.svg`
 - **Tweak glass effect** (blur strength, opacity, rounding): edit `config/includes.chroot/etc/skel/.config/picom.conf`
 - **Change accent color**: edit the `@define-color accent` line in
-  `config/includes.chroot/usr/share/themes/VoidGlass-gtk/gtk-3.0/gtk.css`
+  `config/includes.chroot/usr/share/themes/VoidUI-gtk/gtk-3.0/gtk.css`
 - **Distro name/branding**: edit `config/hooks/0100-branding.chroot`
 
 ## Why XFCE + picom instead of GNOME/KDE?
@@ -101,5 +103,5 @@ Build takes roughly 20–40 minutes on the free GitHub-hosted runners.
 XFCE is lightweight and very configurable, which makes it easy to reskin convincingly and keeps boot/login
 fast — good for "easy to use." `picom` gives real, hardware-accelerated background blur and transparency
 (the actual mechanic behind a glassmorphism look), which is layered on top of a custom GTK3 stylesheet and
-window-border theme so panels, the dock, menus, and windows all pick up frosted-glass panes, soft shadows,
+window-border theme so the taskbar, menus, and windows all pick up frosted-glass panes, soft shadows,
 and rounded corners consistently.

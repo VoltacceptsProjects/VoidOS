@@ -1,4 +1,4 @@
-/* VoidOS - VoidGlass GTK3 theme, "VoidUI" redesign
+/* VoidOS - VoidUI GTK3 theme, "VoidUI" redesign
    macOS-style vibrancy (translucent, blurred, rounded glass panes for
    windows/menus/dock) laid out with Windows 11's structure (a flush,
    edge-to-edge bottom taskbar with a centered icon cluster, a floating
@@ -43,14 +43,6 @@ headerbar, .titlebar, .maximized headerbar {
   border-radius: 0;
   box-shadow: 0 -4px 24px rgba(0,0,0,0.3);
   color: @text_main;
-}
-
-/* The dock (if shown) stays a floating rounded glass pill, mac-style */
-plank-window {
-  background-color: @glass_bg;
-  border: 1px solid @glass_border;
-  border-radius: 18px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
 }
 
 /* Buttons */

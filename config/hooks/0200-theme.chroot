@@ -1,13 +1,13 @@
 #!/bin/sh
 set -e
 
-echo "=== VoidOS: applying VoidGlass theme ==="
+echo "=== VoidOS: applying VoidUI theme ==="
 
 # Make our theme the system default GTK theme + window manager theme + icons
 mkdir -p /etc/gtk-3.0
 cat > /etc/gtk-3.0/settings.ini << 'GTK'
 [Settings]
-gtk-theme-name=VoidGlass-gtk
+gtk-theme-name=VoidUI-gtk
 gtk-icon-theme-name=Papirus-Dark
 gtk-font-name=Inter 10
 gtk-cursor-theme-name=Adwaita
@@ -19,31 +19,19 @@ GTK
 mkdir -p /etc/skel/.config/gtk-3.0
 cp /etc/gtk-3.0/settings.ini /etc/skel/.config/gtk-3.0/settings.ini
 
-# Register picom + plank to autostart for every user
+# Register picom to autostart for every user.
+# NOTE: VoidUI is a single-taskbar Windows 11 layout (centered Start +
+# tasklist on the bottom panel) -- there is intentionally no separate
+# floating dock (e.g. Plank) anymore. Running both a dock and a taskbar
+# app-launcher is a macOS+Windows mashup that doesn't match either OS and
+# just burns extra compositor/GTK overhead for a redundant widget.
 mkdir -p /etc/xdg/autostart
-cat > /etc/xdg/autostart/voidos-picom.desktop << 'DESK'
-[Desktop Entry]
-Type=Application
-Name=VoidOS Compositor
-Exec=picom --config /home/%u/.config/picom.conf
-X-GNOME-Autostart-enabled=true
-NoDisplay=true
-DESK
 # picom needs a real Exec (no %u expansion in .desktop autostart); use env instead
 cat > /etc/xdg/autostart/voidos-picom.desktop << 'DESK'
 [Desktop Entry]
 Type=Application
 Name=VoidOS Compositor
 Exec=sh -c "picom --config $HOME/.config/picom.conf"
-X-GNOME-Autostart-enabled=true
-NoDisplay=true
-DESK
-
-cat > /etc/xdg/autostart/voidos-dock.desktop << 'DESK'
-[Desktop Entry]
-Type=Application
-Name=VoidOS Dock
-Exec=plank
 X-GNOME-Autostart-enabled=true
 NoDisplay=true
 DESK
@@ -58,7 +46,7 @@ fi
 mkdir -p /etc/lightdm/lightdm-gtk-greeter.conf.d
 cat > /etc/lightdm/lightdm-gtk-greeter.conf.d/50-voidos.conf << 'GRT'
 [greeter]
-theme-name = VoidGlass-gtk
+theme-name = VoidUI-gtk
 icon-theme-name = Papirus-Dark
 font-name = Inter 10
 background = /usr/share/backgrounds/voidos/wallpaper.svg
