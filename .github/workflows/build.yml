@@ -62,15 +62,21 @@ jobs:
 
       - name: Verify the config targets Debian bookworm
         # Fail fast (instead of 30 minutes into a build) if auto/config didn't
-        # actually apply - this is what silently broke the build last time.
+        # actually apply. Live-build 3.x splits settings across config/bootstrap,
+        # config/common etc. - LB_DISTRIBUTION lives in config/bootstrap, and
+        # LB_MODE (which controls mirror/keyring - must be "debian", not the
+        # host's own "ubuntu" default) lives in config/common.
         run: |
-          if ! grep -q '^LB_DISTRIBUTION="bookworm"' config/common 2>/dev/null; then
-            echo "::error::config/common does not show LB_DISTRIBUTION=bookworm - auto/config did not run correctly."
-            echo "--- config/common (if present) ---"
-            cat config/common 2>/dev/null || echo "(missing)"
+          MODE_OK=0; DIST_OK=0
+          grep -q '^LB_MODE="debian"' config/common 2>/dev/null && MODE_OK=1
+          grep -q '^LB_DISTRIBUTION="bookworm"' config/bootstrap 2>/dev/null && DIST_OK=1
+          if [ "$MODE_OK" != "1" ] || [ "$DIST_OK" != "1" ]; then
+            echo "::error::auto/config did not apply correctly (mode_ok=$MODE_OK dist_ok=$DIST_OK)."
+            echo "--- config/bootstrap ---"; cat config/bootstrap 2>/dev/null || echo "(missing)"
+            echo "--- config/common ---"; cat config/common 2>/dev/null || echo "(missing)"
             exit 1
           fi
-          echo "Confirmed: targeting Debian bookworm."
+          echo "Confirmed: Debian mode, targeting bookworm."
 
       - name: Build the VoidOS ISO
         env:

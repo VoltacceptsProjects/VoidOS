@@ -44,8 +44,10 @@ sudo lb build
 > `lb config` only auto-executes `auto/config` if it's marked executable in your working
 > copy - if it isn't (e.g. because the repo was pushed via GitHub's web upload, which
 > strips the executable bit, rather than `git push`), `lb config` silently falls back to
-> bare defaults based on your host OS instead of our Debian bookworm settings, and
-> `lb build` will try to bootstrap the wrong (and possibly ancient/archived) distro.
+> bare defaults based on your host OS instead of our Debian bookworm settings. Also, if
+> you're building on an **Ubuntu** host/runner, live-build defaults to Ubuntu "mode"
+> (mirror/keyring) even when you set `--distribution bookworm`; `auto/config` now passes
+> `--mode debian` explicitly to force Debian's mirrors and keyring regardless of host OS.
 
 This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
 

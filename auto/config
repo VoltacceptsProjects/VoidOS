@@ -2,6 +2,7 @@
 set -e
 
 lb config noauto \
+    --mode debian \
     --distribution bookworm \
     --archive-areas "main contrib non-free non-free-firmware" \
     --binary-images iso-hybrid \
