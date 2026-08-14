@@ -1,0 +1,26 @@
+/* VoidUI gtk-3 css - glassy accents */
+@define-color accent_color #7c5cff;
+@define-color text_color #f7f7fb;
+@define-color glass_bg rgba(255,255,255,0.06);
+
+.window-frame,
+.window-frame:backdrop {
+  background-color: @glass_bg;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: @text_color;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+}
+
+.button,
+.entry,
+.menu {
+  background-color: rgba(255,255,255,0.04);
+  color: @text_color;
+  border-radius: 8px;
+}
+
+.headerbar {
+  background-color: rgba(255,255,255,0.03);
+  border-radius: 10px;
+}
