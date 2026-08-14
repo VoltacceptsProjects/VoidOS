@@ -33,9 +33,16 @@ voidos/
 sudo apt update
 sudo apt install -y live-build
 cd voidos
-sudo lb clean
+sudo lb clean --purge
+sudo lb config      # runs auto/config: sets distribution=bookworm, arch, etc.
 sudo lb build
 ```
+
+> **Note:** `sudo lb config` is required before `sudo lb build`. Skipping it means `lb build`
+> has no distribution/architecture settings to work from and can fall back to stale or
+> default values (in testing this produced a broken attempt to bootstrap an ancient,
+> long-archived Ubuntu release instead of Debian bookworm). Always run `lb config` (or
+> `./auto/config` directly) after any `lb clean`, and any time you edit `auto/config` itself.
 
 This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
 

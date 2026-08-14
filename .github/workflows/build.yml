@@ -49,6 +49,12 @@ jobs:
         run: sudo lb clean --purge
         working-directory: .
 
+      - name: Generate live-build config from auto/config
+        # lb build only reads config/ once lb config has populated it
+        # (distribution, architecture, etc.) - this runs our auto/config script.
+        run: sudo lb config
+        working-directory: .
+
       - name: Build the VoidOS ISO
         env:
           LB_APT_INDICES: "false"
