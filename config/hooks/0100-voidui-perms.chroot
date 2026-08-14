@@ -1,0 +1,3 @@
+#!/bin/sh
+# chroot hook: set executable bit for wallpaper setter script
+chmod +x /usr/local/bin/voidui-setwallpaper.sh || true

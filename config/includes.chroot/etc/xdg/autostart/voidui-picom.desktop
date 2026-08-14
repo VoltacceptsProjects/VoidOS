@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VoidUI compositor
+Exec=/usr/bin/picom --config /etc/xdg/picom.conf
+OnlyShowIn=XFCE;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

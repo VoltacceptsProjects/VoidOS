@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=VoidUI Wallpaper
+Exec=/usr/local/bin/voidui-setwallpaper.sh
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true
