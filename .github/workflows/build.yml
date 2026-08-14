@@ -28,6 +28,14 @@ jobs:
     # live-build instead, which eliminates that whole class of bug.
     container:
       image: debian:bookworm
+      # live-build needs to mount /proc and /dev/pts inside the chroot it's
+      # building (and later mount loop devices for the squashfs/ISO stage).
+      # GitHub Actions runs `container:` jobs as normal, unprivileged Docker
+      # containers, which blocks those mount() calls with "permission denied"
+      # even though the image and live-build version are both correct.
+      # --privileged grants the container the capabilities (SYS_ADMIN, etc.)
+      # those mounts need.
+      options: --privileged
 
     steps:
       - name: Install git (needed for actions/checkout and later steps)
