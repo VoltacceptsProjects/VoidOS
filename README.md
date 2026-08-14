@@ -52,6 +52,11 @@ sudo lb build
 > runners generates an outdated `security.debian.org` suite line (`bookworm/updates`)
 > that 404s - Debian renamed that suite to `bookworm-security` a while back. Installed
 > systems can still be pointed at the current security repo manually after install.
+> Finally, `linux-image-amd64` is now listed explicitly in
+> `config/package-lists/voidos.list.chroot` - without it, live-build tries to
+> auto-detect the right kernel package by downloading a merged `Contents-amd64.gz`
+> index that Debian no longer publishes at that path for bookworm, which also 404s.
+> Listing the kernel package yourself makes live-build skip that lookup entirely.
 
 This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
 
