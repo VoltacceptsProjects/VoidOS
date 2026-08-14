@@ -96,6 +96,13 @@ jobs:
       - name: Build the VoidOS ISO
         env:
           LB_APT_INDICES: "false"
+        # `set -o pipefail` is a bash-ism. GitHub Actions defaults container
+        # `run:` steps to `sh -e {0}`, and sh is dash inside debian:bookworm,
+        # which doesn't understand -o pipefail ("Illegal option"). Force bash
+        # explicitly so the pipefail + tee combo (needed so a failing `lb
+        # build` still fails the step even though it's piped into `tee`)
+        # actually works.
+        shell: bash
         run: set -o pipefail; lb build 2>&1 | tee build.log
         working-directory: .
 
