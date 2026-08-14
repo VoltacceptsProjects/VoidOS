@@ -116,6 +116,12 @@ jobs:
 
       - name: Rename ISO with version/commit info
         run: |
+          # `lb build` ran as root in a --privileged container and touched
+          # files under the checkout, so the dir's ownership no longer
+          # matches the user git expects. Git's dubious-ownership check
+          # (safe.directory) then refuses `git rev-parse` below unless we
+          # explicitly allow this path.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           ISO_FILE=$(ls *.iso 2>/dev/null | head -n1)
           if [ -z "$ISO_FILE" ]; then
             echo "No ISO was produced -- see build.log" >&2
