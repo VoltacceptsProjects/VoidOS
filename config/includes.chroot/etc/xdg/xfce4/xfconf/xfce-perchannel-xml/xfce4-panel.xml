@@ -4,14 +4,17 @@
   <property name="panels" type="array">
     <value type="int" value="1"/>
     <property name="panel-1" type="empty">
-      <!-- center-bottom pill-like panel -->
-      <!-- length is percentage of screen width; set less than 100 to create centered pill -->
-      <property name="position" type="string" value="p=6;x=50;y=100"/>
-      <property name="length" type="uint" value="60"/>
+      <!-- VoidUI taskbar: bottom, full-width, glass. p=10 is the standard
+           Xfce "south / bottom edge" screen position (mirrors the stock
+           two-panel default where the dock-style second panel uses p=10,
+           vs. the old top bar's p=6). -->
+      <property name="position" type="string" value="p=10;x=0;y=0"/>
+      <property name="length" type="uint" value="100"/>
+      <property name="length-adjust" type="bool" value="true"/>
       <property name="position-locked" type="bool" value="true"/>
-      <property name="size" type="uint" value="56"/>
-      <!-- background-alpha: 0-255 where lower is more transparent; keep semi-transparent -->
-      <property name="background-alpha" type="uint" value="28"/>
+      <property name="size" type="uint" value="48"/>
+      <property name="icon-size" type="uint" value="26"/>
+      <property name="background-alpha" type="uint" value="60"/>
       <property name="background-style" type="uint" value="1"/>
       <property name="plugin-ids" type="array">
         <value type="int" value="1"/>
@@ -20,24 +23,57 @@
         <value type="int" value="4"/>
         <value type="int" value="5"/>
         <value type="int" value="6"/>
+        <value type="int" value="7"/>
+        <value type="int" value="8"/>
+        <value type="int" value="9"/>
       </property>
     </property>
   </property>
   <property name="plugins" type="empty">
-    <property name="plugin-1" type="string" value="applicationsmenu">
-      <property name="button-icon" type="string" value="start-here"/>
-      <property name="button-title" type="string" value="VoidOS"/>
-      <property name="show-button-title" type="bool" value="false"/>
-    </property>
-    <property name="plugin-2" type="string" value="tasklist"/>
-    <property name="plugin-3" type="string" value="separator">
+    <!-- Left expander: pushes the Start + tasklist cluster to the middle,
+         Windows 11-style, instead of hugging the left edge. -->
+    <property name="plugin-1" type="string" value="separator">
       <property name="expand" type="bool" value="true"/>
       <property name="style" type="uint" value="0"/>
     </property>
-    <property name="plugin-4" type="string" value="systray"/>
-    <property name="plugin-5" type="string" value="pulseaudio"/>
-    <property name="plugin-6" type="string" value="clock">
-      <property name="digital-format" type="string" value="%a %b %d  %H:%M"/>
+
+    <!-- Start button: icon only, no title text, like the Win11 Start icon -->
+    <property name="plugin-2" type="string" value="whiskermenu">
+      <property name="button-icon" type="string" value="start-here"/>
+      <property name="show-button-title" type="bool" value="false"/>
+      <property name="show-button-icon" type="bool" value="true"/>
+      <property name="menu-width" type="int" value="480"/>
+      <property name="menu-height" type="int" value="500"/>
     </property>
+
+    <!-- Pinned + running apps, icon-only, grouped -->
+    <property name="plugin-3" type="string" value="tasklist">
+      <property name="show-labels" type="bool" value="false"/>
+      <property name="show-tooltips" type="bool" value="true"/>
+      <property name="grouping" type="uint" value="1"/>
+      <property name="flat-buttons" type="bool" value="true"/>
+    </property>
+
+    <!-- Right expander: balances plugin-1 so the Start+tasklist cluster
+         above sits centered, and pushes tray/clock to the right edge -->
+    <property name="plugin-4" type="string" value="separator">
+      <property name="expand" type="bool" value="true"/>
+      <property name="style" type="uint" value="0"/>
+    </property>
+
+    <property name="plugin-5" type="string" value="systray"/>
+    <property name="plugin-6" type="string" value="pulseaudio"/>
+    <property name="plugin-7" type="string" value="clock">
+      <property name="digital-format" type="string" value="%I:%M %p&#10;%a %b %d"/>
+    </property>
+
+    <!-- thin fixed gap before the show-desktop sliver -->
+    <property name="plugin-8" type="string" value="separator">
+      <property name="expand" type="bool" value="false"/>
+      <property name="style" type="uint" value="0"/>
+    </property>
+
+    <!-- Show-desktop corner button, like Win11's bottom-right-corner sliver -->
+    <property name="plugin-9" type="string" value="showdesktop"/>
   </property>
 </channel>

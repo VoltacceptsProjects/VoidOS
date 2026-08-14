@@ -3,7 +3,7 @@
   <property name="general" type="empty">
     <property name="theme" type="string" value="VoidGlass-xfwm"/>
     <property name="title_font" type="string" value="Inter Bold 9"/>
-    <property name="button_layout" type="string" value="O|SHMC"/>
+    <property name="button_layout" type="string" value="|HMC"/>
     <property name="show_frame_shadow" type="bool" value="true"/>
     <property name="show_popup_shadow" type="bool" value="true"/>
     <property name="workspace_count" type="int" value="4"/>

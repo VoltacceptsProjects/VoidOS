@@ -61,7 +61,18 @@ sudo lb build
 > so that lookup 404s. `amd64` is already live-build's own default flavour for this
 > architecture, so passing it explicitly was redundant and only triggered the broken check.
 
-This produces `live-image-am64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
+This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
+
+> **Note on hook scripts:** local chroot hooks live directly under `config/hooks/*.chroot`
+> (flat, no `live/`/`normal/` subfolder, no `.hook.` infix — e.g. `config/hooks/0100-branding.chroot`).
+> This is *not* the layout documented in the current upstream Debian Live Manual
+> (`config/hooks/live/NAME.hook.chroot`) — that convention belongs to the actively
+> maintained Debian `live-build` package. The `live-build` shipped by Ubuntu (and thus by
+> `ubuntu-latest` GitHub runners) is a much older `3.0~a57` snapshot from 2012 that never
+> got that rewrite, and it silently finds zero hooks — no error, no log output — if they're
+> placed in `config/hooks/live/`. If you add a new hook and it doesn't seem to run, check
+> the build log for its `echo` output right after the `P: Begin executing hooks...` line;
+> if nothing printed, it's in the wrong place.
 
 ## Build it with GitHub Actions (recommended — this is the workflow you asked for)
 
@@ -92,12 +103,3 @@ fast — good for "easy to use." `picom` gives real, hardware-accelerated backgr
 (the actual mechanic behind a glassmorphism look), which is layered on top of a custom GTK3 stylesheet and
 window-border theme so panels, the dock, menus, and windows all pick up frosted-glass panes, soft shadows,
 and rounded corners consistently.
-
-
-## VoidUI (Glass + Centered Taskbar)
-
-- Wallpaper: /usr/share/backgrounds/voidui-wallpaper.jpg
-- Compositor: picom (config at /etc/xdg/picom.conf)
-- Theme: VoidUI GTK theme (installed to /usr/share/themes/VoidUI)
-- Autostart: /etc/xdg/autostart/voidui-picom.desktop and voidui-wallpaper.desktop
-- To preview locally in a running XFCE session: start picom and run the wallpaper script, then switch theme to VoidUI.

@@ -1,7 +1,8 @@
-// VoidOS plymouth boot splash: dark void background + violet pulsing ring + logo image
+// VoidOS plymouth boot splash: dark void background + ember pulsing ring + logo image
+// (VoidUI redesign: warm dark tones + ember accent, matching the sunset wallpaper)
 
-Window.SetBackgroundTopColor(0.04, 0.04, 0.08);
-Window.SetBackgroundBottomColor(0.01, 0.01, 0.03);
+Window.SetBackgroundTopColor(0.08, 0.05, 0.05);
+Window.SetBackgroundBottomColor(0.02, 0.01, 0.01);
 
 logo.image = Image("logo.png");
 logo.sprite = Sprite(logo.image);
@@ -12,7 +13,7 @@ logo.sprite.SetY(Window.GetHeight() / 2 - logo.image.GetHeight() / 2 - 40);
 ring_dots = 24;
 ring_radius = logo.image.GetWidth() / 2 + 30;
 for (i = 0; i < ring_dots; i++) {
-  dot[i].image = Image.Text("•", 0.55, 0.36, 0.95, 1, "Sans 20");
+  dot[i].image = Image.Text("•", 1, 0.42, 0.24, 1, "Sans 20");
   dot[i].sprite = Sprite(dot[i].image);
 }
 

@@ -1,15 +1,19 @@
-/* VoidOS - VoidGlass GTK3 theme
-   A frosted-glass look: translucent panes, soft rounded corners,
-   subtle borders, and a violet accent. Works with picom's blur to
-   produce the actual "glassmorphism" effect (real blur behind the panes). */
+/* VoidOS - VoidGlass GTK3 theme, "VoidUI" redesign
+   macOS-style vibrancy (translucent, blurred, rounded glass panes for
+   windows/menus/dock) laid out with Windows 11's structure (a flush,
+   edge-to-edge bottom taskbar with a centered icon cluster, a floating
+   rounded Start/menu panel above it). Palette is pulled from the default
+   desert-sunset wallpaper: warm amber/ember accent over a warm-tinted
+   dark glass, instead of the old violet/cyan scheme.
+   Real blur behind every translucent pane comes from picom. */
 
-@define-color accent          #8b5cf6;   /* violet */
-@define-color accent_alt      #06b6d4;   /* cyan highlight */
-@define-color glass_bg        rgba(24, 24, 34, 0.55);
-@define-color glass_bg_light  rgba(255, 255, 255, 0.06);
-@define-color glass_border    rgba(255, 255, 255, 0.14);
-@define-color text_main       #f1f1f6;
-@define-color text_dim        #b6b6c4;
+@define-color accent          #ff6a3d;   /* sunset ember orange */
+@define-color accent_alt      #ffb454;   /* warm gold highlight */
+@define-color glass_bg        rgba(28, 18, 16, 0.55);
+@define-color glass_bg_light  rgba(255, 240, 230, 0.07);
+@define-color glass_border    rgba(255, 200, 170, 0.16);
+@define-color text_main       #fbeee6;
+@define-color text_dim        #d8b8ac;
 
 * {
   font-family: "Inter", "Cantarell", sans-serif;
@@ -21,20 +25,39 @@ window, .background {
   color: @text_main;
 }
 
-/* Panels, headerbars, and the dock all read as "glass panes" */
-headerbar, .titlebar, #xfce4-panel, .panel, plank-window, .maximized headerbar {
+/* Windows: rounded, frosted panes (macOS vibrancy) */
+headerbar, .titlebar, .maximized headerbar {
   background-color: @glass_bg;
   border: 1px solid @glass_border;
-  border-radius: 14px;
+  border-radius: 10px 10px 0 0;
   box-shadow: 0 8px 32px rgba(0,0,0,0.35);
   color: @text_main;
+}
+
+/* The taskbar itself: flush, edge-to-edge, NOT rounded (Windows 11
+   layout) -- it still reads as glass via translucency + picom blur,
+   just without the floating-pane rounding used elsewhere. */
+#xfce4-panel, .panel {
+  background-color: @glass_bg;
+  border-top: 1px solid @glass_border;
+  border-radius: 0;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.3);
+  color: @text_main;
+}
+
+/* The dock (if shown) stays a floating rounded glass pill, mac-style */
+plank-window {
+  background-color: @glass_bg;
+  border: 1px solid @glass_border;
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
 }
 
 /* Buttons */
 button {
   background-color: @glass_bg_light;
   border: 1px solid @glass_border;
-  border-radius: 10px;
+  border-radius: 8px;
   color: @text_main;
   transition: background-color 150ms ease, border-color 150ms ease;
 }
@@ -59,11 +82,13 @@ button.destructive-action {
   color: #ffffff;
 }
 
-/* Menus / popovers -- picom blurs behind these */
+/* Menus / popovers -- the floating Start menu, right-click menus, the
+   systray flyout, etc. Rounded + frosted + shadowed, like Win11's
+   mica/acrylic Start menu, which is basically vibrancy already. */
 menu, .menu, popover, .background.popup {
   background-color: @glass_bg;
   border: 1px solid @glass_border;
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.45);
 }
 menuitem:hover {
@@ -75,7 +100,7 @@ menuitem:hover {
 entry {
   background-color: @glass_bg_light;
   border: 1px solid @glass_border;
-  border-radius: 10px;
+  border-radius: 8px;
   color: @text_main;
   caret-color: @accent;
 }
@@ -113,7 +138,8 @@ scale trough highlight {
   background-color: @accent;
 }
 
-/* Notification / OSD panels (volume, brightness popups) */
+/* Notification / OSD panels (volume, brightness popups) -- floating
+   rounded glass, top-center like Win11's OSDs */
 .osd {
   background-color: @glass_bg;
   border-radius: 16px;
@@ -126,4 +152,10 @@ tooltip {
   border: 1px solid @glass_border;
   border-radius: 8px;
   color: @text_main;
+}
+
+/* Taskbar buttons (tasklist plugin): icon-only chips that light up with
+   the accent when active/hovered, Windows 11-style */
+.xfce4-panel button {
+  border-radius: 8px;
 }

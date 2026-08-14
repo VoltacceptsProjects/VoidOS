@@ -11,6 +11,7 @@ lightdm-gtk-greeter-settings
 # --- Glassmorphism / compositing ---
 picom
 plank
+xfce4-whiskermenu-plugin
 fonts-inter
 fonts-cantarell
 fonts-noto-color-emoji
