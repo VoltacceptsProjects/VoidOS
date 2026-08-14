@@ -16,7 +16,7 @@ voidos/
 ├── .github/workflows/build.yml     # GitHub Actions: builds a bootable VoidOS ISO
 ├── config/
 │   ├── package-lists/voidos.list.chroot   # packages installed into the ISO
-│   ├── hooks/normal/                      # chroot scripts: branding + theme install
+│   ├── hooks/                              # chroot scripts: rsvg shim + branding + theme install
 │   └── includes.chroot/                   # files copied verbatim into the ISO's filesystem
 │       ├── etc/skel/.config/picom.conf            # blur/glass compositor config
 │       ├── usr/share/themes/VoidGlass-gtk/        # GTK3 glass theme (CSS)
@@ -63,6 +63,17 @@ sudo lb build
 
 This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
 
+> **Note on hook scripts:** local chroot hooks live directly under `config/hooks/*.chroot`
+> (flat, no `live/`/`normal/` subfolder, no `.hook.` infix — e.g. `config/hooks/0100-branding.chroot`).
+> This is *not* the layout documented in the current upstream Debian Live Manual
+> (`config/hooks/live/NAME.hook.chroot`) — that convention belongs to the actively
+> maintained Debian `live-build` package. The `live-build` shipped by Ubuntu (and thus by
+> `ubuntu-latest` GitHub runners) is a much older `3.0~a57` snapshot from 2012 that never
+> got that rewrite, and it silently finds zero hooks — no error, no log output — if they're
+> placed in `config/hooks/live/`. If you add a new hook and it doesn't seem to run, check
+> the build log for its `echo` output right after the `P: Begin executing hooks...` line;
+> if nothing printed, it's in the wrong place.
+
 ## Build it with GitHub Actions (recommended — this is the workflow you asked for)
 
 Just push this repo to GitHub. The workflow at `.github/workflows/build.yml`:
@@ -83,7 +94,7 @@ Build takes roughly 20–40 minutes on the free GitHub-hosted runners.
 - **Tweak glass effect** (blur strength, opacity, rounding): edit `config/includes.chroot/etc/skel/.config/picom.conf`
 - **Change accent color**: edit the `@define-color accent` line in
   `config/includes.chroot/usr/share/themes/VoidGlass-gtk/gtk-3.0/gtk.css`
-- **Distro name/branding**: edit `config/hooks/normal/0100-branding.hook.chroot`
+- **Distro name/branding**: edit `config/hooks/0100-branding.chroot`
 
 ## Why XFCE + picom instead of GNOME/KDE?
 
