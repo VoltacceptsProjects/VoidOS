@@ -48,6 +48,10 @@ sudo lb build
 > you're building on an **Ubuntu** host/runner, live-build defaults to Ubuntu "mode"
 > (mirror/keyring) even when you set `--distribution bookworm`; `auto/config` now passes
 > `--mode debian` explicitly to force Debian's mirrors and keyring regardless of host OS.
+> It also passes `--security false`, since the live-build version on current GitHub
+> runners generates an outdated `security.debian.org` suite line (`bookworm/updates`)
+> that 404s - Debian renamed that suite to `bookworm-security` a while back. Installed
+> systems can still be pointed at the current security repo manually after install.
 
 This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
 
