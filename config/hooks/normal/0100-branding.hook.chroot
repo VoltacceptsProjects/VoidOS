@@ -1,0 +1,63 @@
+#!/bin/sh
+set -e
+
+echo "=== VoidOS: applying branding ==="
+
+# /etc/os-release
+cat > /etc/os-release << 'OSREL'
+PRETTY_NAME="VoidOS 1.0"
+NAME="VoidOS"
+VERSION_ID="1.0"
+VERSION="1.0 (Nebula)"
+VERSION_CODENAME=nebula
+ID=voidos
+ID_LIKE=debian
+HOME_URL="https://github.com/"
+SUPPORT_URL="https://github.com/"
+BUG_REPORT_URL="https://github.com/"
+OSREL
+
+cp /etc/os-release /usr/lib/os-release
+
+echo "voidos" > /etc/hostname
+cat > /etc/hosts << 'HOSTS'
+127.0.0.1   localhost
+127.0.1.1   voidos
+::1         localhost ip6-localhost ip6-loopback
+ff02::1     ip6-allnodes
+ff02::2     ip6-allrouters
+HOSTS
+
+# Friendly MOTD
+cat > /etc/motd << 'MOTD'
+
+  __   __      _   _  ____   _____
+  \ \ / /___  (_) | |/ __ \ / ____|
+   \ V // _ \ | | | | |  | | (___
+    > <| (_) || | | | |  | |\___ \
+   / . \\___/ |_| |_| |__| |____) |
+  /_/ \_\                \____/_____/
+
+  Welcome to VoidOS.
+
+MOTD
+
+# Create default live user "void" with sudo, no password prompt for convenience live-boot
+if ! id void >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo,netdev,audio,video,plugdev void
+    echo "void:void" | chpasswd
+fi
+echo "void ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/void
+chmod 440 /etc/sudoers.d/void
+
+# lightdm: autologin the live user, use the greeter theme we ship
+mkdir -p /etc/lightdm/lightdm.conf.d
+cat > /etc/lightdm/lightdm.conf.d/50-voidos.conf << 'LDM'
+[Seat:*]
+greeter-session=lightdm-gtk-greeter
+autologin-user=void
+autologin-user-timeout=0
+user-session=xfce
+LDM
+
+echo "=== VoidOS: branding applied ==="

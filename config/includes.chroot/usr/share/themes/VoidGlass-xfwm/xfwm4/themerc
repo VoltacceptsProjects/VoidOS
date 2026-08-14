@@ -1,0 +1,33 @@
+# VoidOS - VoidGlass window manager (xfwm4) theme
+# Minimal, glass-adjacent borders: thin translucent frame, soft rounded top
+# corners, violet accent for the active window's title bar underline.
+
+active_text_color=#f1f1f6
+inactive_text_color=#b6b6c4
+active_shadow_color=#000000
+inactive_shadow_color=#000000
+
+font=Inter Bold 9
+
+show_app_icon=true
+title_alignment=left
+title_shadow_active=false
+title_shadow_inactive=false
+
+button_layout=O|SHMC
+button_spacing=2
+
+corner_radius=14
+
+# Frame thickness (kept thin so the "glass" panel border reads through)
+frame_border_top=32
+frame_border_bottom=4
+frame_border_left=4
+frame_border_right=4
+
+repeat_button_pixmap=false
+maximized_offset=0
+
+# Colors are mostly driven via picom transparency + GTK theme;
+# xfwm4 pixmap-based theming is intentionally kept minimal here so
+# the compositor's blur/translucency does the visual work.

@@ -1,0 +1,69 @@
+#!/bin/sh
+set -e
+
+echo "=== VoidOS: applying VoidGlass theme ==="
+
+# Make our theme the system default GTK theme + window manager theme + icons
+mkdir -p /etc/gtk-3.0
+cat > /etc/gtk-3.0/settings.ini << 'GTK'
+[Settings]
+gtk-theme-name=VoidGlass-gtk
+gtk-icon-theme-name=Papirus-Dark
+gtk-font-name=Inter 10
+gtk-cursor-theme-name=Adwaita
+gtk-application-prefer-dark-theme=1
+gtk-button-images=1
+gtk-menu-images=1
+GTK
+
+mkdir -p /etc/skel/.config/gtk-3.0
+cp /etc/gtk-3.0/settings.ini /etc/skel/.config/gtk-3.0/settings.ini
+
+# Register picom + plank to autostart for every user
+mkdir -p /etc/xdg/autostart
+cat > /etc/xdg/autostart/voidos-picom.desktop << 'DESK'
+[Desktop Entry]
+Type=Application
+Name=VoidOS Compositor
+Exec=picom --config /home/%u/.config/picom.conf
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+DESK
+# picom needs a real Exec (no %u expansion in .desktop autostart); use env instead
+cat > /etc/xdg/autostart/voidos-picom.desktop << 'DESK'
+[Desktop Entry]
+Type=Application
+Name=VoidOS Compositor
+Exec=sh -c "picom --config $HOME/.config/picom.conf"
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+DESK
+
+cat > /etc/xdg/autostart/voidos-dock.desktop << 'DESK'
+[Desktop Entry]
+Type=Application
+Name=VoidOS Dock
+Exec=plank
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+DESK
+
+# Set wallpaper + panel/dock defaults for new users via xfce4 xml (already placed by includes.chroot)
+# Set plymouth boot theme
+if [ -d /usr/share/plymouth/themes/voidos ]; then
+    plymouth-set-default-theme -R voidos || true
+fi
+
+# Set lightdm greeter theme to match
+mkdir -p /etc/lightdm/lightdm-gtk-greeter.conf.d
+cat > /etc/lightdm/lightdm-gtk-greeter.conf.d/50-voidos.conf << 'GRT'
+[greeter]
+theme-name = VoidGlass-gtk
+icon-theme-name = Papirus-Dark
+font-name = Inter 10
+background = /usr/share/backgrounds/voidos/wallpaper.svg
+default-user-image = #avatar-default
+indicators = ~host;~spacer;~clock;~spacer;~session;~language;~power
+GRT
+
+echo "=== VoidOS: theme applied ==="

@@ -1,0 +1,44 @@
+# --- Base system ---
+task-xfce-desktop
+xfce4
+xfce4-goodies
+lightdm
+lightdm-gtk-greeter
+lightdm-gtk-greeter-settings
+
+# --- Glassmorphism / compositing ---
+picom
+plank
+fonts-inter
+fonts-cantarell
+fonts-noto-color-emoji
+papirus-icon-theme
+gtk2-engines-murrine
+gtk2-engines-pixbuf
+librsvg2-common
+
+# --- Plymouth boot splash ---
+plymouth
+plymouth-themes
+
+# --- Everyday apps (keeps it "easy to use" out of the box) ---
+firefox-esr
+xarchiver
+mousepad
+ristretto
+parole
+gnome-disk-utility
+gparted
+network-manager-gnome
+pavucontrol
+xfce4-terminal
+xfce4-taskmanager
+file-roller
+
+# --- Utilities ---
+sudo
+curl
+wget
+git
+htop
+neofetch

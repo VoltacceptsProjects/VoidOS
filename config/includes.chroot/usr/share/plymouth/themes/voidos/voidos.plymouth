@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=VoidOS
+Description=VoidOS glass boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/voidos
+ScriptFile=/usr/share/plymouth/themes/voidos/voidos.script

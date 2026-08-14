@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+lb config noauto \
+    --distribution bookworm \
+    --archive-areas "main contrib non-free non-free-firmware" \
+    --binary-images iso-hybrid \
+    --architecture amd64 \
+    --linux-flavours amd64 \
+    --iso-application "VoidOS" \
+    --iso-publisher "VoidOS Project" \
+    --iso-volume "VoidOS" \
+    --bootappend-live "boot=live components username=void hostname=voidos quiet splash" \
+    --debian-installer none \
+    --memtest none \
+    --win32-loader false \
+    --apt-recommends true \
+    --apt-source-archives false \
+    "${@}"

@@ -1,75 +1,98 @@
-name: Build VoidOS
+name: Build VoidOS ISO
 
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*.*.*" ]
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch: {}
+  workflow_dispatch: {}   # lets you click "Run workflow" manually in the Actions tab
+
+concurrency:
+  group: build-voidos-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build ISO (amd64)
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout
+      - name: Checkout VoidOS source
         uses: actions/checkout@v4
 
-      - name: Install toolchain
+      - name: Free up disk space on the runner
+        # live-build needs real headroom (a full Debian chroot + squashfs + ISO)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo apt-get clean
+          df -h
+
+      - name: Install live-build and dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            nasm \
-            gcc-multilib \
-            binutils \
-            grub-pc-bin \
-            grub-common \
+            live-build \
+            debootstrap \
+            squashfs-tools \
             xorriso \
+            isolinux \
+            syslinux-common \
+            dosfstools \
             mtools
 
-      - name: Build kernel + ISO
-        run: make
+      - name: Show live-build version
+        run: lb --version || true
 
-      - name: Upload ISO
-        uses: actions/upload-artifact@v4
-        with:
-          name: voidos-iso
-          path: voidos.iso
+      - name: Clean any previous build state
+        run: sudo lb clean --purge
+        working-directory: .
 
-      - name: Upload kernel binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: voidos-kernel-bin
-          path: iso/boot/voidos.bin
+      - name: Build the VoidOS ISO
+        env:
+          LB_APT_INDICES: "false"
+        run: sudo lb build 2>&1 | tee build.log
+        working-directory: .
 
-  boot-smoke-test:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install toolchain
+      - name: Rename ISO with version/commit info
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            nasm gcc-multilib binutils grub-pc-bin grub-common xorriso mtools \
-            qemu-system-x86
-
-      - name: Build ISO
-        run: make
-
-      - name: Boot in QEMU (headless, timeout-bounded)
-        run: |
-          timeout 20s qemu-system-i386 \
-            -cdrom voidos.iso \
-            -display none \
-            -serial mon:stdio \
-            -no-reboot \
-            -no-shutdown || code=$?
-          # timeout returns 124 if it had to kill qemu after 20s of running,
-          # which just means the OS booted and stayed up - treat that as success.
-          if [ "${code:-0}" -ne 0 ] && [ "${code:-0}" -ne 124 ]; then
-            echo "QEMU exited with unexpected code $code"
-            exit "$code"
+          ISO_FILE=$(ls *.iso 2>/dev/null | head -n1)
+          if [ -z "$ISO_FILE" ]; then
+            echo "No ISO was produced -- see build.log" >&2
+            exit 1
           fi
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          NEW_NAME="VoidOS-${SHORT_SHA}.iso"
+          mv "$ISO_FILE" "$NEW_NAME"
+          echo "ISO_NAME=$NEW_NAME" >> "$GITHUB_ENV"
+          sha256sum "$NEW_NAME" > "$NEW_NAME.sha256"
+
+      - name: Upload build log (always, for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voidos-build-log
+          path: build.log
+          retention-days: 14
+
+      - name: Upload ISO artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ISO_NAME }}
+          path: |
+            ${{ env.ISO_NAME }}
+            ${{ env.ISO_NAME }}.sha256
+          retention-days: 30
+
+      - name: Attach ISO to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ISO_NAME }}
+            ${{ env.ISO_NAME }}.sha256
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
