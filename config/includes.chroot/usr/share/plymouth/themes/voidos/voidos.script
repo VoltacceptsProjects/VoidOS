@@ -1,16 +1,16 @@
-// VoidOS plymouth boot splash: dark void background + violet pulsing ring + logo text
+// VoidOS plymouth boot splash: dark void background + violet pulsing ring + logo image
 
 Window.SetBackgroundTopColor(0.04, 0.04, 0.08);
 Window.SetBackgroundBottomColor(0.01, 0.01, 0.03);
 
-logo.image = Image.Text("VoidOS", 1, 1, 1, 1, "Sans Bold 42");
+logo.image = Image("logo.png");
 logo.sprite = Sprite(logo.image);
 logo.sprite.SetX(Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2);
 logo.sprite.SetY(Window.GetHeight() / 2 - logo.image.GetHeight() / 2 - 40);
 
 // simple pulsing ring made of dots to avoid needing bundled art assets
 ring_dots = 24;
-ring_radius = 46;
+ring_radius = logo.image.GetWidth() / 2 + 30;
 for (i = 0; i < ring_dots; i++) {
   dot[i].image = Image.Text("•", 0.55, 0.36, 0.95, 1, "Sans 20");
   dot[i].sprite = Sprite(dot[i].image);
@@ -24,7 +24,7 @@ fun refresh_callback() {
   for (i = 0; i < ring_dots; i++) {
     angle = (i * angle_step + (Plymouth.GetTimeElapsed() * 60)) * 3.14159 / 180;
     x = Window.GetWidth()  / 2 + ring_radius * Math.Cos(angle) - 6;
-    y = Window.GetHeight() / 2 + 40 + ring_radius * Math.Sin(angle) - 6;
+    y = Window.GetHeight() / 2 - 40 + ring_radius * Math.Sin(angle) - 6;
     dot[i].sprite.SetX(x);
     dot[i].sprite.SetY(y);
     opacity = 0.35 + 0.65 * ((i % ring_dots) / ring_dots);
