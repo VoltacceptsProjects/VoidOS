@@ -12,7 +12,7 @@ lb config noauto \
     --iso-publisher "VoidOS Project" \
     --iso-volume "VoidOS" \
     --bootappend-live "boot=live components username=void hostname=voidos quiet splash" \
-    --debian-installer none \
+    --debian-installer false \
     --memtest none \
     --win32-loader false \
     --apt-recommends true \
