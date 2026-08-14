@@ -17,4 +17,5 @@ lb config noauto \
     --win32-loader false \
     --apt-recommends true \
     --apt-source-archives false \
+    --firmware-chroot false \
     "${@}"
