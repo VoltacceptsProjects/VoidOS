@@ -21,7 +21,7 @@ librsvg2-common
 # --- macOS-style top menu bar plugins ---
 xfce4-appfinder
 xfce4-power-manager
-xfce4-power-manager-plugin
+xfce4-power-manager-plugins
 xfce4-pulseaudio-plugin
 
 # --- VoidDock (custom GTK/Cairo dock: voiddock.py + voidos-appmenu.py) ---
