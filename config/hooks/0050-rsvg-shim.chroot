@@ -32,6 +32,11 @@ while [ $# -gt 0 ]; do
       args+=("$1" "$2")
       shift 2
       ;;
+    -w|--width|-h|--height|-x|--x-zoom|-y|--y-zoom|-d|--dpi-x|-p|--dpi-y|-f|--format|-b|--background-color|-i|--export-id)
+      # these legacy flags all take a following value; keep flag+value together
+      args+=("$1" "$2")
+      shift 2
+      ;;
     -*)
       args+=("$1")
       shift
