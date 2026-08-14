@@ -34,15 +34,18 @@ sudo apt update
 sudo apt install -y live-build
 cd voidos
 sudo lb clean --purge
-sudo lb config      # runs auto/config: sets distribution=bookworm, arch, etc.
+chmod +x auto/config
+sudo ./auto/config    # runs auto/config directly: sets distribution=bookworm, arch, etc.
 sudo lb build
 ```
 
-> **Note:** `sudo lb config` is required before `sudo lb build`. Skipping it means `lb build`
-> has no distribution/architecture settings to work from and can fall back to stale or
-> default values (in testing this produced a broken attempt to bootstrap an ancient,
-> long-archived Ubuntu release instead of Debian bookworm). Always run `lb config` (or
-> `./auto/config` directly) after any `lb clean`, and any time you edit `auto/config` itself.
+> **Note:** Always run `chmod +x auto/config && sudo ./auto/config` (not bare `lb config`)
+> before `lb build`, and re-run it after any `lb clean` or edit to `auto/config`. Bare
+> `lb config` only auto-executes `auto/config` if it's marked executable in your working
+> copy - if it isn't (e.g. because the repo was pushed via GitHub's web upload, which
+> strips the executable bit, rather than `git push`), `lb config` silently falls back to
+> bare defaults based on your host OS instead of our Debian bookworm settings, and
+> `lb build` will try to bootstrap the wrong (and possibly ancient/archived) distro.
 
 This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
 

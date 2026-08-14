@@ -50,10 +50,27 @@ jobs:
         working-directory: .
 
       - name: Generate live-build config from auto/config
-        # lb build only reads config/ once lb config has populated it
-        # (distribution, architecture, etc.) - this runs our auto/config script.
-        run: sudo lb config
+        # lb build only reads config/ once it's been populated (distribution,
+        # architecture, etc.). `lb config` alone only auto-runs auto/config if
+        # that file is marked executable in the repo - which isn't guaranteed
+        # (e.g. it's lost if files were pushed via GitHub's web upload instead
+        # of `git push`). So we force the bit and call the script directly.
+        run: |
+          chmod +x auto/config
+          sudo ./auto/config
         working-directory: .
+
+      - name: Verify the config targets Debian bookworm
+        # Fail fast (instead of 30 minutes into a build) if auto/config didn't
+        # actually apply - this is what silently broke the build last time.
+        run: |
+          if ! grep -q '^LB_DISTRIBUTION="bookworm"' config/common 2>/dev/null; then
+            echo "::error::config/common does not show LB_DISTRIBUTION=bookworm - auto/config did not run correctly."
+            echo "--- config/common (if present) ---"
+            cat config/common 2>/dev/null || echo "(missing)"
+            exit 1
+          fi
+          echo "Confirmed: targeting Debian bookworm."
 
       - name: Build the VoidOS ISO
         env:
