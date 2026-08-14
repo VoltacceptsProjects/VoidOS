@@ -4,11 +4,14 @@
   <property name="panels" type="array">
     <value type="int" value="1"/>
     <property name="panel-1" type="empty">
-      <property name="position" type="string" value="p=6;x=0;y=0"/>
-      <property name="length" type="uint" value="100"/>
+      <!-- center-bottom pill-like panel -->
+      <!-- length is percentage of screen width; set less than 100 to create centered pill -->
+      <property name="position" type="string" value="p=6;x=50;y=100"/>
+      <property name="length" type="uint" value="60"/>
       <property name="position-locked" type="bool" value="true"/>
-      <property name="size" type="uint" value="34"/>
-      <property name="background-alpha" type="uint" value="55"/>
+      <property name="size" type="uint" value="56"/>
+      <!-- background-alpha: 0-255 where lower is more transparent; keep semi-transparent -->
+      <property name="background-alpha" type="uint" value="28"/>
       <property name="background-style" type="uint" value="1"/>
       <property name="plugin-ids" type="array">
         <value type="int" value="1"/>
@@ -24,7 +27,7 @@
     <property name="plugin-1" type="string" value="applicationsmenu">
       <property name="button-icon" type="string" value="start-here"/>
       <property name="button-title" type="string" value="VoidOS"/>
-      <property name="show-button-title" type="bool" value="true"/>
+      <property name="show-button-title" type="bool" value="false"/>
     </property>
     <property name="plugin-2" type="string" value="tasklist"/>
     <property name="plugin-3" type="string" value="separator">
