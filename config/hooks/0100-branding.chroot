@@ -17,8 +17,6 @@ SUPPORT_URL="https://github.com/"
 BUG_REPORT_URL="https://github.com/"
 OSREL
 
-cp /etc/os-release /usr/lib/os-release
-
 echo "voidos" > /etc/hostname
 cat > /etc/hosts << 'HOSTS'
 127.0.0.1   localhost
