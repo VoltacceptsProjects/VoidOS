@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-vdoc">
+    <comment>VoidDocs document</comment>
+    <sub-class-of type="text/markdown"/>
+    <glob pattern="*.vdoc"/>
+    <icon name="accessories-text-editor"/>
+  </mime-type>
+</mime-info>

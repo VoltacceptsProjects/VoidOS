@@ -1,0 +1,8 @@
+voidwm (1.0.0) stable; urgency=medium
+
+  * Fix: dock/bar no longer go stale on VM/RandR screen resizes
+    (listen for root ConfigureNotify, recompute geometry).
+  * Widen dock auto-reveal hot-zone from 3px to 8px.
+  * Initial packaged release.
+
+ -- VoidOS Project <voidos@example.com>  Tue, 18 Aug 2026 12:00:00 +0000

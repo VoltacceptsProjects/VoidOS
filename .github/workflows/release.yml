@@ -1,0 +1,49 @@
+# Builds voidwm_<version>_amd64.deb and uploads it as a workflow
+# artifact. Doesn't touch the APT repo or any signing key - just
+# gives you a .deb to download from the Actions run.
+#
+# Trigger manually from the Actions tab, or by pushing a tag like v1.0.1.
+
+name: Build .deb
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 1.0.1)'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev \
+            libxext-dev libcairo2-dev libpango1.0-dev
+
+      - name: Derive version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build .deb
+        run: packaging/build-deb.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Upload .deb as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: voidwm_${{ steps.version.outputs.version }}_amd64
+          path: dist/voidwm_${{ steps.version.outputs.version }}_amd64.deb
+          if-no-files-found: error

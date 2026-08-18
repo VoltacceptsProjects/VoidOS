@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=VoidOS Menu
-Comment=About, Settings, Force Quit, and power options
-Exec=voidos-appmenu.py
-Icon=start-here
-Terminal=false
-Categories=System;
-NoDisplay=true

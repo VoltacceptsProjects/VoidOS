@@ -1,0 +1,49 @@
+#!/bin/sh
+# VoidOS desktop session launcher.
+#
+# Run by the display manager (LightDM/GDM/SDDM/etc, via voidwm.desktop)
+# or directly from ~/.xinitrc with `exec voidwm-session`. Sets up the
+# root background, starts an optional compositor for the glass/blur
+# look if one is installed, then execs the window manager as the last
+# process in the session (so the session manager waits on it).
+
+for d in /usr/local/share/voidos/wallpapers /usr/share/voidos/wallpapers; do
+    [ -d "$d" ] && WALLPAPER_DIR="$d" && break
+done
+WALLPAPER="${VOIDOS_WALLPAPER:-$WALLPAPER_DIR/dark.jpg}"
+
+# Background: prefer a real wallpaper image if a setter and file are
+# available, otherwise fall back to a flat fill matching COL_ROOT_BG
+# in config.h -- voidwm itself already paints that color on root, so
+# this is optional polish, not a hard dependency.
+if [ -f "$WALLPAPER" ]; then
+    if command -v feh >/dev/null 2>&1; then
+        feh --bg-fill "$WALLPAPER" 2>/dev/null
+    elif command -v nitrogen >/dev/null 2>&1; then
+        nitrogen --set-zoom-fill "$WALLPAPER" 2>/dev/null
+    elif command -v xwallpaper >/dev/null 2>&1; then
+        xwallpaper --zoom "$WALLPAPER" 2>/dev/null
+    fi
+fi
+
+# Optional compositor for frosted-glass translucency on the bar/dock
+# (see USE_ARGB_VISUAL in config.h). voidwm looks fine without one --
+# just flat panels instead of blur.
+if command -v picom >/dev/null 2>&1; then
+    picom --experimental-backends -b 2>/tmp/voidos-picom.log &
+fi
+
+# Bring up a notification daemon and polkit agent if present, so apps
+# launched from the dock behave like a normal desktop session. Both
+# are best-effort; voidwm does not depend on either.
+if command -v dunst >/dev/null 2>&1; then
+    dunst &
+fi
+for agent in /usr/lib/polkit-*-agent-1 /usr/libexec/polkit-*-agent-1; do
+    [ -x "$agent" ] && "$agent" &
+done
+
+# User autostart hook, run once per session if present.
+[ -x "$HOME/.config/voidos/autostart.sh" ] && "$HOME/.config/voidos/autostart.sh" &
+
+exec voidwm

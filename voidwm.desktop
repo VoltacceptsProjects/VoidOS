@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=VoidOS
+Comment=VoidOS desktop -- floating X11 window manager with bar and dock
+Exec=voidwm-session
+TryExec=voidwm
+Type=Application
+DesktopNames=VoidOS

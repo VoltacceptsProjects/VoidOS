@@ -1,0 +1,9 @@
+#!/bin/sh
+# Example ~/.xinitrc for launching VoidOS with `startx`, on distros
+# with no display manager (or when you'd rather not run one).
+#
+#   cp examples/xinitrc ~/.xinitrc
+#   chmod +x ~/.xinitrc
+#   startx
+
+exec voidwm-session

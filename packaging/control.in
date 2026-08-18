@@ -1,0 +1,17 @@
+Package: voidwm
+Version: @VERSION@
+Section: x11
+Priority: optional
+Architecture: amd64
+Depends: libx11-6, libxext6, libcairo2, libpango-1.0-0, libpangocairo-1.0-0, libglib2.0-0, x-terminal-emulator
+Recommends: picom, feh
+Installed-Size: @INSTALLED_SIZE@
+Maintainer: VoidOS Project <voidos@example.com>
+Homepage: https://<your-gh-username>.github.io/<your-apt-repo>
+Description: VoidOS floating X11 window manager with bar and dock
+ A small, real X11 desktop environment: a floating/reparenting window
+ manager with a top status bar, an auto-hiding bottom dock, per-window
+ titlebars with traffic-light controls, and virtual workspaces.
+ .
+ Installs a session entry so it shows up in display managers
+ (LightDM/GDM/SDDM) as "VoidOS", alongside GNOME/KDE/etc.

@@ -1,150 +1,183 @@
-# VoidOS
+# VoidOS Desktop
 
-A modern, glassmorphism-styled Linux distribution built on **Debian 12 (bookworm)** using `live-build`.
-Desktop: XFCE4 + `picom` (real background blur/transparency) + a custom "VoidGlass" GTK/xfwm theme, laid
-out as a macOS-style desktop: a thin top menu bar (VoidOS menu, Search, and status items) plus
-**VoidDock**, a from-scratch GTK3/Cairo floating dock with continuous hover magnification, a glass pill
-container, running-app indicator dots, and a bounce-on-launch animation -- not an embedded web page, and
-using only VoidOS's own Papirus icon set (no Apple artwork or fonts anywhere).
+A small, real X11 desktop environment: a floating/reparenting window
+manager (`voidwm`) with a top status bar, an auto-hiding bottom dock,
+per-window titlebars with traffic-light controls, and 5 virtual
+workspaces. No bitmap icons anywhere — the dock buttons and battery
+indicator are all drawn procedurally with cairo. Styling matches the
+VoidOS "ember" web portfolio theme (dark, deep red/orange, glass
+panels when a compositor is running).
 
-VoidOS is not a from-scratch kernel — it uses the stock Debian/Linux kernel and packaging tools, and layers
-branding, theming, and a curated package set on top via `live-build`. This is the standard, realistic way to
-build a custom Linux OS; writing a Linux kernel itself is a multi-decade undertaking done by thousands of
-contributors, so this project reuses it (as every distro does) and focuses on the part that's actually yours:
-the look, feel, and package selection.
+This is a real Xorg window manager, written in C against Xlib +
+cairo + pango. It runs on actual hardware, not just in a browser or a
+mockup — install it, log into an X session, and it manages real
+application windows.
 
-## What's in here
+**Wayland:** not included here, and it's worth being upfront about
+why. A Wayland session isn't "the same WM in a different mode" — it's
+a full compositor that replaces Xorg entirely (input handling, output
+management, buffer compositing, the works), typically built on
+wlroots. That's a separate, much larger codebase from this X11 WM,
+not a config flag. This package is X11/Xorg only. If Wayland matters
+to you, `voidwm` still works fine under XWayland-less setups or as
+your Xorg session while you wait on a wlroots port; it is not a
+first step toward one.
+
+## What's in this package
 
 ```
-voidos/
-├── .github/workflows/build.yml     # GitHub Actions: builds a bootable VoidOS ISO
-├── config/
-│   ├── package-lists/voidos.list.chroot   # packages installed into the ISO
-│   ├── hooks/                              # chroot scripts: rsvg shim + branding + theme install
-│   └── includes.chroot/                   # files copied verbatim into the ISO's filesystem
-│       ├── etc/skel/.config/picom.conf            # blur/glass compositor config
-│       ├── etc/xdg/xfce4/xfconf/.../xfce4-panel.xml  # top menu bar layout
-│       ├── usr/local/bin/voiddock.py              # VoidDock: the magnifying dock (GTK3 + Cairo)
-│       ├── usr/local/bin/voidos-appmenu.py        # VoidOS menu popup (About/Settings/power)
-│       ├── usr/share/applications/voidos-appmenu.desktop  # menu-bar launcher entry
-│       ├── usr/share/applications/voidos-search.desktop   # menu-bar Spotlight-equivalent entry
-│       ├── usr/share/themes/VoidGlass-gtk/        # GTK3 glass theme (CSS)
-│       ├── usr/share/themes/VoidGlass-xfwm/       # window border theme
-│       ├── usr/share/backgrounds/voidos/          # generated wallpaper
-│       ├── usr/share/plymouth/themes/voidos/      # boot splash
-│       └── etc/lightdm/...                        # login screen theme
-└── auto/config                     # live-build configuration script
+src/            voidwm.c, draw.c, bar.c, dock.c + headers
+apps/voiddocs/  VoidDocs, the dock's markdown editor (.vdoc files) -- see below
+Makefile        builds voidwm, installs the session
+voidwm-session  session launcher (wallpaper, optional picom, exec voidwm)
+voidwm.desktop  xsession entry so display managers (LightDM/GDM/SDDM) list it
+wallpapers/     4 wallpaper choices from the VoidOS theme (dark/light/red/solacium)
+examples/xinitrc  drop-in ~/.xinitrc if you use startx instead of a DM
 ```
 
-VoidDock is autostarted per-session (registered in `config/hooks/0200-theme.chroot`, alongside picom)
-rather than shipped as a static `includes.chroot` autostart file, so it follows the same
-"generate `/etc/xdg/autostart/*.desktop` from the hook" pattern already used for picom and the
-persistence nudge. It runs as a real GTK3 window (type-hinted `DOCK`, `DrawingArea` + Cairo), not an
-embedded web page, and integrates with actual windows via `libwnck` (click to focus/minimize, a dot
-under running apps) -- something a webview-based dock can't do. Its magnification is continuous
-(Gaussian falloff by cursor distance) rather than stepped, which reads closer to real macOS than the
-`macos-dock-in-html-and-css` reference it's mechanically ported from.
+## Build & install (real hardware, any systemd-less or systemd distro)
 
-## Build it yourself (locally, on a Debian/Ubuntu machine)
+Install dependencies first:
 
-```bash
-sudo apt update
-sudo apt install -y live-build
-cd voidos
-sudo lb clean --purge
-chmod +x auto/config
-sudo ./auto/config    # runs auto/config directly: sets distribution=bookworm, arch, etc.
-sudo lb build
+```sh
+# Debian / Ubuntu
+sudo apt install build-essential pkg-config libx11-dev libxext-dev \
+                  libcairo2-dev libpango1.0-dev
+
+# Fedora
+sudo dnf install gcc make pkgconf-pkg-config libX11-devel libXext-devel \
+                  cairo-devel pango-devel
+
+# Arch
+sudo pacman -S base-devel pkgconf libx11 libxext cairo pango
 ```
 
-> **Note:** Always run `chmod +x auto/config && sudo ./auto/config` (not bare `lb config`)
-> before `lb build`, and re-run it after any `lb clean` or edit to `auto/config`. Bare
-> `lb config` only auto-executes `auto/config` if it's marked executable in your working
-> copy - if it isn't (e.g. because the repo was pushed via GitHub's web upload, which
-> strips the executable bit, rather than `git push`), `lb config` silently falls back to
-> bare defaults based on your host OS instead of our Debian bookworm settings. Also, if
-> you're building on an **Ubuntu** host/runner, live-build defaults to Ubuntu "mode"
-> (mirror/keyring) even when you set `--distribution bookworm`; `auto/config` now passes
-> `--mode debian` explicitly to force Debian's mirrors and keyring regardless of host OS.
-> It also passes `--security false`, since the live-build version on current GitHub
-> runners generates an outdated `security.debian.org` suite line (`bookworm/updates`)
-> that 404s - Debian renamed that suite to `bookworm-security` a while back. Installed
-> systems can still be pointed at the current security repo manually after install.
-> `linux-image-amd64` is listed explicitly in `config/package-lists/voidos.list.chroot`
-> as a safety net so the kernel is always pulled in regardless of flavour-detection
-> behavior. `auto/config` also no longer passes `--linux-flavours amd64`: doing so forces
-> live-build to verify the kernel package by downloading a merged `Contents-amd64.gz`
-> index directly under `dists/bookworm/`, which Debian no longer publishes at that path
-> (it's now only published per-component, e.g. `dists/bookworm/main/Contents-amd64.gz`),
-> so that lookup 404s. `amd64` is already live-build's own default flavour for this
-> architecture, so passing it explicitly was redundant and only triggered the broken check.
+Then:
 
-This produces `live-image-amd64.hybrid.iso` — flash it with `dd` or `Rufus`/`balenaEtcher`, or boot it directly in a VM (VirtualBox/QEMU/UTM).
+```sh
+make
+sudo make install
+```
 
-> **Note on hook scripts:** local chroot hooks live directly under `config/hooks/*.chroot`
-> (flat, no `live/`/`normal/` subfolder, no `.hook.` infix — e.g. `config/hooks/0100-branding.chroot`).
-> This is *not* the layout documented in the current upstream Debian Live Manual
-> (`config/hooks/live/NAME.hook.chroot`) — that convention belongs to the actively
-> maintained Debian `live-build` package. The `live-build` shipped by Ubuntu (and thus by
-> `ubuntu-latest` GitHub runners) is a much older `3.0~a57` snapshot from 2012 that never
-> got that rewrite, and it silently finds zero hooks — no error, no log output — if they're
-> placed in `config/hooks/live/`. If you add a new hook and it doesn't seem to run, check
-> the build log for its `echo` output right after the `P: Begin executing hooks...` line;
-> if nothing printed, it's in the wrong place.
+This installs:
+- `voidwm` and `voidwm-session` to `/usr/local/bin`
+- `voidwm.desktop` to `/usr/share/xsessions` (so it shows up on your
+  login screen's session picker, next to GNOME/KDE/etc.)
+- the wallpapers to `/usr/local/share/voidos/wallpapers`
 
-## Build it with GitHub Actions (recommended — this is the workflow you asked for)
+Log out, pick **VoidOS** from your display manager's session menu,
+and log in.
 
-Just push this repo to GitHub. The workflow at `.github/workflows/build.yml`:
+### No display manager? (startx)
 
-1. Spins up an `ubuntu-latest` runner
-2. Installs `live-build` and dependencies
-3. Runs `lb build` inside this repo
-4. Uploads the resulting `.iso` as a downloadable build artifact
-5. Optionally attaches the ISO to a GitHub Release when you push a tag like `v0.1.0`
+```sh
+cp examples/xinitrc ~/.xinitrc
+chmod +x ~/.xinitrc
+startx
+```
 
-You can trigger it manually from the **Actions** tab ("Run workflow"), on every push to `main`, or on a version tag.
-Build takes roughly 20–40 minutes on the free GitHub-hosted runners.
+### Optional extras
 
-## Persistent storage without installing (VoidOS Persistent Drive / `.vospd`)
+None of these are required — `voidwm` runs standalone — but
+`voidwm-session` will pick them up automatically if installed:
 
-VoidOS boots as a normal live system, but it doesn't have to forget everything on reboot. Open the
-Search icon in the top menu bar (or the Launchpad icon in VoidDock) and run **VoidOS Persistent Drive**
-(`voidos-persistence-setup`) and pick any writable drive
--- an internal partition, a second USB stick, whatever you've got. It creates a `VoidOS.vospd` file
-there: a loopback ext4 filesystem image that holds your persistent `/`.
+- **feh / nitrogen / xwallpaper** — sets the desktop wallpaper. Without
+  one, the root window just stays a flat color (already matches the
+  theme — see `COL_ROOT_BG` in `src/config.h`).
+- **picom** — a real X compositor, needed for actual frosted-glass
+  translucency/blur on the bar and dock (`USE_ARGB_VISUAL` in
+  `config.h` sets up the ARGB visual `voidwm` needs; picom does the
+  actual blur). Without it you still get the panels, just flat
+  instead of glassy.
+- **dunst** — notification daemon, launched if present.
+- **a terminal emulator** (`x-terminal-emulator` or `xterm`) — the
+  dock's Terminal button and `Mod+Return` need one on `$PATH`.
 
-That works because live-boot's default `persistence-storage=file,filesystem` setting already makes it
-probe every readable filesystem's *top-level root* at boot for an image file matching
-`persistence-label`. `auto/config` sets `persistence-label=VoidOS.vospd` in `--bootappend-live`, so any
-drive with a `VoidOS.vospd` at its root (containing a `persistence.conf` with `/ union`, which the setup
-tool writes for you) is picked up automatically on the next boot -- no installer, no dedicated partition,
-no boot menu options to remember. Plug the drive in, boot VoidOS, it's just there.
+## VoidDocs (the dock's markdown editor)
 
-A few things worth knowing:
-- The `.vospd` file must sit at the drive's root, not in a subfolder -- the setup tool checks this for you.
-- FAT32 caps any single file at 4 GiB; use exFAT, NTFS, or ext4 if you want a bigger Persistent Drive.
-- The image is unencrypted by default (matching live-boot's `persistence-encryption=none` default). If
-  the drive could end up in someone else's hands, treat it like any other unencrypted storage.
-- `config/includes.chroot/usr/local/bin/voidos-persistence-setup` is the whole implementation -- it's a
-  plain bash + zenity script using `udisksctl` (no root needed for the desktop user at the console) and
-  `mkfs.ext4` (which can format a plain file directly, no loop device needed for that step).
+The dock's **VoidDocs** button opens `voiddocs`, a small GTK3 editor
+for VoidOS's native document type, `.vdoc` — plain markdown text
+under the hood, with a live syntax-highlighted editor pane and a
+toggleable rendered preview pane, styled to match the desktop theme.
+It's a separate app from `voidwm` (needs GTK3, not just X11/cairo),
+so it's not built by the top-level `make`/`make install`:
 
-## Customizing
+```sh
+# Debian / Ubuntu
+sudo apt install libgtk-3-dev
 
-- **Add/remove packages**: edit `config/package-lists/voidos.list.chroot`
-- **Change wallpaper**: replace `config/includes.chroot/usr/share/backgrounds/voidos/wallpaper.svg`
-- **Tweak glass effect** (blur strength, opacity, rounding): edit `config/includes.chroot/etc/skel/.config/picom.conf`
-- **Change accent color**: edit the `@define-color accent` line in
-  `config/includes.chroot/usr/share/themes/VoidGlass-gtk/gtk-3.0/gtk.css`
-- **Distro name/branding**: edit `config/hooks/0100-branding.chroot`
-- **Change the persistence filename/label**: edit `persistence-label=` in `--bootappend-live` in `auto/config`
+# Fedora
+sudo dnf install gtk3-devel
 
-## Why XFCE + picom instead of GNOME/KDE?
+# Arch
+sudo pacman -S gtk3
 
-XFCE is lightweight and very configurable, which makes it easy to reskin convincingly and keeps boot/login
-fast — good for "easy to use." `picom` gives real, hardware-accelerated background blur and transparency
-(the actual mechanic behind a glassmorphism look), which is layered on top of a custom GTK3 stylesheet and
-window-border theme so the top menu bar, VoidDock, menus, and windows all pick up frosted-glass panes,
-soft shadows, and rounded corners consistently. XFCE's panel also happens to make the menu-bar half of
-this layout nearly free (a thin `p=6` panel with a couple of launcher plugins); VoidDock is the one piece
-built entirely from scratch, since no stock Xfce panel plugin does continuous hover-magnification.
+make voiddocs
+sudo make install-voiddocs
+```
+
+This installs `voiddocs` to `/usr/local/bin`, its `.desktop` entry
+(so file managers list it as a launcher/handler), and a MIME-type
+registration so `.vdoc` files are associated with it. If `voiddocs`
+isn't installed, the dock button falls back to opening `nano`/`vi`
+in a terminal instead, same as every other dock entry's fallback
+chain.
+
+Shortcuts inside VoidDocs: `Ctrl+N` new, `Ctrl+O` open, `Ctrl+S`
+save, `Ctrl+Shift+S` save as, `Ctrl+P`/`Ctrl+E` toggle preview.
+
+## Using it
+
+| Action | Binding |
+|---|---|
+| Open terminal | `Super+Return` |
+| Close focused window | `Super+Shift+Q` |
+| Cycle focus | `Super+Tab` |
+| Toggle maximize/fullscreen | `Super+F` |
+| Switch to workspace 1–5 | `Super+1` … `Super+5` |
+| Move focused window to workspace 1–5 | `Super+Shift+1` … `Super+Shift+5` |
+| Quit voidwm | `Super+Shift+E` |
+| Move any window | `Super` + drag with left click |
+| Resize any window | `Super` + drag with right click |
+| Titlebar dots (left→right) | close / minimize / maximize |
+
+Click the workspace dots on the left of the bar to switch workspaces.
+Move your pointer to the bottom edge of the screen to reveal the
+dock; it auto-hides after ~1.4s once you move away.
+
+All of this — colors, metrics, keybindings, dock apps, workspace
+count — is one file: `src/config.h`. Edit it, `make`, restart the
+session.
+
+Windows get rounded corners by default (`WINDOW_RADIUS` in
+`config.h`, applied via the X Shape extension to each window's
+frame — titlebar, border and content all get cut together, and it
+squares off automatically while a window is maximized/fullscreen).
+Set `WINDOW_RADIUS` to `0` for classic square corners.
+
+## Notes on what changed getting this to build clean on real hardware
+
+The window manager logic (workspaces, framing, drag-move/resize,
+focus, ICCCM delete protocol) was already complete. Getting it to
+actually compile and run against a live X server surfaced a few real
+bugs, now fixed:
+
+- `on_unmap_notify` was typed as the nonexistent `XUnmapNotifyEvent`
+  (Xlib's actual struct is `XUnmapEvent`) — the whole build failed on
+  this before anything else could be tested.
+- `dock.c` referenced `LeaveNotifyMask`, which isn't a real X11 event
+  mask constant; the correct one is `LeaveWindowMask`.
+- `<math.h>`'s `M_PI`/`M_PI_2` aren't exposed under strict `-std=c11`
+  on glibc without `_DEFAULT_SOURCE`; added to `CFLAGS`.
+- The battery percentage buffer in `bar.c` was undersized for the
+  format string per the compiler's static range analysis; widened and
+  clamped 0–100 defensively.
+- The Makefile expected sources under `src/`, but they were flat —
+  fixed here by actually laying out the tree that way.
+- `voidwm-session`, `voidwm.desktop`, and the wallpaper install step
+  didn't exist yet even though the Makefile's `install` target already
+  referenced them — added.
+
+After these fixes it was built and run against a live X server
+(framing a real `xterm`, correct bar/dock geometry, no crashes) before
+being packaged here.

@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Search
-Comment=Find and launch apps
-Exec=xfce4-appfinder --collapsed
-Icon=system-search
-Terminal=false
-Categories=System;
-NoDisplay=true
