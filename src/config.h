@@ -57,36 +57,37 @@
 #define FONT_SIZE_TITLEBAR    11.5
 
 /* ---------------------------------------------------------------- *
- * Palette -- lifted from the VoidUI "ember" theme (0xAARRGGBB).
- * Set USE_ARGB_VISUAL to 1 to let a compositor (picom) render true
- * frosted-glass blur/transparency on the bar + dock, matching the
- * web reference. Works fine with it at 0 too -- just flat panels
- * instead of glass, no compositor required.
+ * Palette -- "nightfall" theme: dark indigo/violet glass, styled
+ * after BazziteOS's GNOME desktop (0xAARRGGBB). Set USE_ARGB_VISUAL
+ * to 1 to let a compositor (picom) render true frosted-glass blur/
+ * transparency on the bar + dock, matching the reference. Works
+ * fine with it at 0 too -- just flat panels instead of glass, no
+ * compositor required.
  * ---------------------------------------------------------------- */
 #define USE_ARGB_VISUAL      1
 
-#define COL_ROOT_BG          0xFF150707u
-#define COL_BAR_BG           0xE62A0D0Cu
-#define COL_BAR_BORDER       0x40FF9678u
-#define COL_DOCK_BG          0xD9240A0Au
-#define COL_DOCK_BORDER      0x40FF9678u
-#define COL_DOCK_ICON_HOVER  0x33FF5A3Cu
+#define COL_ROOT_BG          0xFF0C0A14u
+#define COL_BAR_BG           0xCC17131Fu
+#define COL_BAR_BORDER       0x40A78BFAu
+#define COL_DOCK_BG          0xCC1B1626u
+#define COL_DOCK_BORDER      0x40A78BFAu
+#define COL_DOCK_ICON_HOVER  0x338B7CF6u
 
-#define COL_TEXT_PRIMARY     0xFFFFF3EEu
-#define COL_TEXT_MUTED       0xC8FFD2C3u
-#define COL_TEXT_FAINT       0x80FFD2C3u
+#define COL_TEXT_PRIMARY     0xFFF3F1FAu
+#define COL_TEXT_MUTED       0xC8D6D0F0u
+#define COL_TEXT_FAINT       0x80B3A9D9u
 
-#define COL_ACCENT           0xFFFF5A3Cu
-#define COL_ACCENT_HOVER     0xFFFF7A5Cu
+#define COL_ACCENT           0xFF9D7BF6u
+#define COL_ACCENT_HOVER     0xFFBBA0FBu
 
-#define COL_TITLEBAR_FOCUS   0xFF3A1512u
-#define COL_TITLEBAR_UNFOCUS 0xFF241010u
-#define COL_BORDER_FOCUS     0xFFFF5A3Cu
-#define COL_BORDER_UNFOCUS   0xFF3A2320u
-#define COL_CLIENT_BG        0xFF0C0404u  /* shown briefly before client paints */
+#define COL_TITLEBAR_FOCUS   0xFF241D38u
+#define COL_TITLEBAR_UNFOCUS 0xFF17131Fu
+#define COL_BORDER_FOCUS     0xFF9D7BF6u
+#define COL_BORDER_UNFOCUS   0xFF2B2440u
+#define COL_CLIENT_BG        0xFF0F0C18u  /* shown briefly before client paints */
 
-#define COL_DOT_CLOSE        0xFFFF5A3Cu
-#define COL_DOT_MAX          0xFFFFC163u
+#define COL_DOT_CLOSE        0xFFFF5F57u
+#define COL_DOT_MAX          0xFFFEBC2Eu
 #define COL_DOT_MIN          0xFF5AD16Bu
 
 /* ---------------------------------------------------------------- *

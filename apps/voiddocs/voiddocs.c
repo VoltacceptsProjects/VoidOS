@@ -1,14 +1,27 @@
-/* VoidDocs -- the VoidOS markdown editor
+/* VoidDocs -- the VoidOS Rich Void Text editor
  *
- * A small GTK3 app for VoidOS's native document format, `.vdoc`
- * (plain markdown text under the hood -- the extension just tells
- * VoidDocs and the desktop's file associations "open this here").
+ * A small GTK3 app for VoidOS's native document format, `.rvt`
+ * (Rich Void Text). Under the hood it's plain text with a mix of
+ * Markdown and extra rich-text markers:
  *
- * Left pane: a plain-text editor with live markdown syntax
- * highlighting (headers, **bold**, *italic*, `code`, lists,
- * blockquotes). Right pane: a live rendered preview, toggleable.
- * No HTML engine involved -- both panes are GtkTextViews, styled
- * with text tags, which keeps this dependency-light and fast.
+ *   **bold**, *italic*, `code`, [link](url),
+ *   __underline__, ~~strikethrough~~, ==highlight==,
+ *   ^superscript^, ~subscript~
+ *
+ * Single combined page: one GtkTextView is both the editor and the
+ * live preview. Formatting (bold/italic/headers/links/...) is
+ * rendered in place as you type via text tags; a "Show/Hide Markup"
+ * toggle controls whether the Rich Void Text punctuation itself
+ * (**, __, `, [...](...), etc.) is visible or hidden, so the same
+ * page works either as a raw source view or a clean WYSIWYG view.
+ * No HTML engine involved -- just a GtkTextView styled with tags,
+ * which keeps this dependency-light and fast.
+ *
+ * The chrome is a Word-style ribbon: a dark-blue quick-access strip,
+ * a clickable tab row (File / Home / Insert / Layout / Review /
+ * View -- every tab has real, working commands), and the document
+ * itself rendered as a white "page" floating on a gray canvas --
+ * the classic Office print-layout look.
  *
  * Runs fine standalone under any GTK-capable WM; under voidwm it
  * gets a titlebar + rounded frame for free, and this window's title
@@ -18,32 +31,48 @@
 #include <string.h>
 
 #define APP_TITLE        "VoidDocs"
-#define VDOC_EXTENSION   ".vdoc"
-#define DEFAULT_FILENAME "untitled.vdoc"
+#define VDOC_EXTENSION   ".rvt"
+#define DEFAULT_FILENAME "untitled.rvt"
 
-/* ---- VoidOS "ember" palette, matching src/config.h ---- */
-#define CSS_BG          "#150707"
-#define CSS_PANEL_BG    "#1c0a09"
-#define CSS_EDGE        "#2a0d0c"
-#define CSS_TEXT        "#fff3ee"
-#define CSS_TEXT_MUTED  "#d8b8ab"
-#define CSS_ACCENT      "#ff5a3c"
-#define CSS_ACCENT_HOV  "#ff7a5c"
-#define CSS_CODE_BG     "#2a1210"
+/* ---- "Word 2026" Fluent-ish chrome palette ---- */
+#define CSS_BG          "#EAEAEA"   /* gray canvas behind the page */
+#define CSS_PANEL_BG    "#F3F2F1"   /* ribbon body */
+#define CSS_EDGE        "#D6D6D6"   /* hairline borders */
+#define CSS_TITLEBAR    "#185ABD"   /* quick-access strip */
+#define CSS_TITLEBAR_DK "#0F3E85"
+#define CSS_TEXT        "#201F1E"
+#define CSS_TEXT_MUTED  "#5B5B5B"
+#define CSS_ACCENT      "#185ABD"
+#define CSS_ACCENT_HOV  "#2B7CD3"
+#define CSS_ACCENT_TINT "#E8F1FC"
+
+/* ---- White page/document palette ---- */
+#define PAGE_BG          "#ffffff"
+#define PAGE_TEXT        "#1a1a1a"
+#define PAGE_MUTED       "#6b5d55"
+#define PAGE_CODE_BG     "#f2f2f2"
+#define PAGE_CODE_TEXT   "#8a3b2b"
+#define PAGE_HIGHLIGHT   "#fff3b0"
+#define PAGE_MARKUP_DIM  "#b9b3ad"  /* dimmed color for RVF punctuation */
+
+#define N_TABS 6
 
 typedef struct {
     GtkWidget     *window;
-    GtkWidget     *paned;
     GtkWidget     *editor_view;
-    GtkWidget     *preview_view;
-    GtkWidget     *preview_scroller;
-    GtkWidget     *toggle_preview_btn;
     GtkWidget     *status_label;
+    GtkWidget     *titlebar_doc_label;
+    GtkWidget     *zoom_label;
+    GtkWidget     *ribbon_stack;
+    GtkWidget     *tab_buttons[N_TABS];
+    GtkWidget     *markup_toggle_btn;       /* Home tab's toggle */
+    GtkWidget     *markup_toggle_btn_view;  /* View tab's toggle */
     GtkTextBuffer *buf;
-    GtkTextBuffer *preview_buf;
+    GtkTextTag    *markup_tag;
     gchar         *filepath;   /* NULL if never saved */
     gboolean       modified;
-    gboolean       preview_on;
+    gboolean       show_markup;
+    gdouble        zoom_level;
     guint          highlight_idle_id;
 } AppState;
 
@@ -73,6 +102,14 @@ update_title(AppState *st)
                                      st->modified ? "  \xe2\x80\x94  edited" : "");
     gtk_label_set_text(GTK_LABEL(st->status_label), status);
     g_free(status);
+
+    if (st->titlebar_doc_label) {
+        gchar *doc = g_strdup_printf("%s%s",
+                                      display_name(st),
+                                      st->modified ? " \xe2\x97\x8f" : "");
+        gtk_label_set_text(GTK_LABEL(st->titlebar_doc_label), doc);
+        g_free(doc);
+    }
 }
 
 static void
@@ -84,18 +121,24 @@ set_modified(AppState *st, gboolean m)
 }
 
 /* ================================================================
- * Tag setup, shared shape/colors for editor + preview
+ * Tag setup for the single combined editor/preview buffer
  * ================================================================ */
 
 static void
-install_tags(GtkTextBuffer *buf, gboolean is_preview)
+install_tags(GtkTextBuffer *buf, AppState *st)
 {
     gtk_text_buffer_create_tag(buf, "bold",   "weight", PANGO_WEIGHT_BOLD, NULL);
     gtk_text_buffer_create_tag(buf, "italic", "style",  PANGO_STYLE_ITALIC, NULL);
+    gtk_text_buffer_create_tag(buf, "underline", "underline", PANGO_UNDERLINE_SINGLE, NULL);
+    gtk_text_buffer_create_tag(buf, "strikethrough", "strikethrough", TRUE, NULL);
+    gtk_text_buffer_create_tag(buf, "highlight", "background", PAGE_HIGHLIGHT, NULL);
+    gtk_text_buffer_create_tag(buf, "superscript", "rise", 4 * PANGO_SCALE, "scale", 0.8, NULL);
+    gtk_text_buffer_create_tag(buf, "subscript", "rise", -3 * PANGO_SCALE, "scale", 0.8, NULL);
+
     gtk_text_buffer_create_tag(buf, "code",
                                 "family", "monospace",
-                                "foreground", "#ffcbb8",
-                                "background", CSS_CODE_BG, NULL);
+                                "foreground", PAGE_CODE_TEXT,
+                                "background", PAGE_CODE_BG, NULL);
     gtk_text_buffer_create_tag(buf, "link",
                                 "foreground", CSS_ACCENT_HOV,
                                 "underline", PANGO_UNDERLINE_SINGLE, NULL);
@@ -103,9 +146,17 @@ install_tags(GtkTextBuffer *buf, gboolean is_preview)
     gtk_text_buffer_create_tag(buf, "blockquote-marker", "foreground", CSS_ACCENT, NULL);
     gtk_text_buffer_create_tag(buf, "blockquote",
                                 "style", PANGO_STYLE_ITALIC,
-                                "foreground", CSS_TEXT_MUTED,
-                                "left-margin", is_preview ? 16 : 0, NULL);
-    gtk_text_buffer_create_tag(buf, "hr", "foreground", CSS_TEXT_MUTED, NULL);
+                                "foreground", PAGE_MUTED,
+                                "left-margin", 16, NULL);
+    gtk_text_buffer_create_tag(buf, "hr", "foreground", PAGE_MUTED, NULL);
+
+    /* RVF punctuation itself: dimmed while visible, and this is the
+     * tag whose "invisible" property gets flipped by the Show/Hide
+     * Markup toggle -- that's what turns this single page into a
+     * clean rendered view without needing a second pane/buffer. */
+    st->markup_tag = gtk_text_buffer_create_tag(buf, "markup",
+                                                 "foreground", PAGE_MARKUP_DIM,
+                                                 "scale", 0.94, NULL);
 
     static const double scales[7] = { 0, 1.9, 1.6, 1.35, 1.18, 1.05, 1.0 };
     for (int lvl = 1; lvl <= 6; lvl++) {
@@ -114,159 +165,15 @@ install_tags(GtkTextBuffer *buf, gboolean is_preview)
         gtk_text_buffer_create_tag(buf, name,
                                     "weight", PANGO_WEIGHT_BOLD,
                                     "scale", scales[lvl],
-                                    "foreground", lvl <= 2 ? CSS_ACCENT : CSS_TEXT,
-                                    "pixels-above-lines", is_preview ? 6 : 0,
-                                    "pixels-below-lines", is_preview ? 2 : 0,
+                                    "foreground", lvl <= 2 ? CSS_ACCENT : PAGE_TEXT,
+                                    "pixels-above-lines", 6,
+                                    "pixels-below-lines", 2,
                                     NULL);
     }
 }
 
-/* insert `len` bytes of `text` at *iter, tagged with up to two named
- * tags (either may be NULL). Advances *iter past the inserted text. */
-static void
-insert_tagged(GtkTextBuffer *buf, GtkTextIter *iter, const char *text, gssize len,
-              const char *tag1, const char *tag2)
-{
-    if (len == 0) return;
-    GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, iter, TRUE);
-    gtk_text_buffer_insert(buf, iter, text, len);
-    if (tag1 || tag2) {
-        GtkTextIter start;
-        gtk_text_buffer_get_iter_at_mark(buf, &start, mark);
-        if (tag1) gtk_text_buffer_apply_tag_by_name(buf, tag1, &start, iter);
-        if (tag2) gtk_text_buffer_apply_tag_by_name(buf, tag2, &start, iter);
-    }
-    gtk_text_buffer_delete_mark(buf, mark);
-}
-
-/* Scan `text` for **bold**, *italic*, `code`, [link](url) spans and
- * insert into `buf` at *iter, applying `extra_tag` (may be NULL,
- * e.g. a header-level or blockquote tag) to every run alongside. */
-static void
-insert_inline(GtkTextBuffer *buf, GtkTextIter *iter, const char *text, const char *extra_tag)
-{
-    const char *p = text;
-    while (*p) {
-        if (p[0] == '*' && p[1] == '*') {
-            const char *end = strstr(p + 2, "**");
-            if (end && end > p + 2) {
-                insert_tagged(buf, iter, p + 2, end - (p + 2), "bold", extra_tag);
-                p = end + 2; continue;
-            }
-        }
-        if (p[0] == '`') {
-            const char *end = strchr(p + 1, '`');
-            if (end && end > p + 1) {
-                insert_tagged(buf, iter, p + 1, end - (p + 1), "code", extra_tag);
-                p = end + 1; continue;
-            }
-        }
-        if (p[0] == '*') {
-            const char *end = strchr(p + 1, '*');
-            if (end && end > p + 1) {
-                insert_tagged(buf, iter, p + 1, end - (p + 1), "italic", extra_tag);
-                p = end + 1; continue;
-            }
-        }
-        if (p[0] == '[') {
-            const char *close = strchr(p + 1, ']');
-            if (close && close[1] == '(') {
-                const char *urlend = strchr(close + 2, ')');
-                if (urlend) {
-                    insert_tagged(buf, iter, p + 1, close - (p + 1), "link", extra_tag);
-                    p = urlend + 1; continue;
-                }
-            }
-        }
-        const char *ns = p + 1;
-        while (*ns && *ns != '*' && *ns != '`' && *ns != '[') ns++;
-        insert_tagged(buf, iter, p, ns - p, extra_tag, NULL);
-        p = ns;
-    }
-}
-
 /* ================================================================
- * Live preview (right pane): reparse the whole document into
- * preview_buf, replacing markdown punctuation with real styling.
- * ================================================================ */
-
-static void
-render_preview(AppState *st)
-{
-    gtk_text_buffer_set_text(st->preview_buf, "", 0);
-    GtkTextIter iter;
-    gtk_text_buffer_get_start_iter(st->preview_buf, &iter);
-
-    GtkTextIter s, e;
-    gtk_text_buffer_get_bounds(st->buf, &s, &e);
-    gchar *whole = gtk_text_buffer_get_text(st->buf, &s, &e, FALSE);
-
-    gchar **lines = g_strsplit(whole, "\n", -1);
-    gboolean in_code = FALSE;
-
-    for (int i = 0; lines[i]; i++) {
-        if (i > 0) insert_tagged(st->preview_buf, &iter, "\n", 1, NULL, NULL);
-
-        const char *line = lines[i];
-        const char *p = line;
-        while (*p == ' ') p++;
-
-        if (strncmp(p, "```", 3) == 0) {
-            in_code = !in_code;
-            continue;
-        }
-        if (in_code) {
-            insert_tagged(st->preview_buf, &iter, line, -1, "code", NULL);
-            continue;
-        }
-        if (*p == '#') {
-            int level = 0;
-            const char *q = p;
-            while (*q == '#' && level < 6) { level++; q++; }
-            if (*q == ' ') q++;
-            char tagname[16];
-            g_snprintf(tagname, sizeof tagname, "header%d", level);
-            insert_inline(st->preview_buf, &iter, q, tagname);
-            continue;
-        }
-        if (*p == '>') {
-            const char *q = p + 1;
-            if (*q == ' ') q++;
-            insert_tagged(st->preview_buf, &iter, "\xe2\x96\x8e ", -1, "blockquote-marker", NULL);
-            insert_inline(st->preview_buf, &iter, q, "blockquote");
-            continue;
-        }
-        if ((p[0] == '-' || p[0] == '*' || p[0] == '+') && p[1] == ' ') {
-            insert_tagged(st->preview_buf, &iter, "\xe2\x80\xa2  ", -1, "list-marker", NULL);
-            insert_inline(st->preview_buf, &iter, p + 2, NULL);
-            continue;
-        }
-        {
-            const char *q = p;
-            while (g_ascii_isdigit(*q)) q++;
-            if (q != p && q[0] == '.' && q[1] == ' ') {
-                insert_tagged(st->preview_buf, &iter, p, q - p + 1, "list-marker", NULL);
-                insert_tagged(st->preview_buf, &iter, " ", 1, NULL, NULL);
-                insert_inline(st->preview_buf, &iter, q + 2, NULL);
-                continue;
-            }
-        }
-        if (strcmp(p, "---") == 0 || strcmp(p, "***") == 0) {
-            insert_tagged(st->preview_buf, &iter,
-                           "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
-                           "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80",
-                           -1, "hr", NULL);
-            continue;
-        }
-        insert_inline(st->preview_buf, &iter, line, NULL);
-    }
-
-    g_strfreev(lines);
-    g_free(whole);
-}
-
-/* ================================================================
- * Editor syntax highlighting (applied in place, over st->buf)
+ * Live in-place formatting for the combined page
  * ================================================================ */
 
 static void
@@ -277,6 +184,17 @@ apply_range(GtkTextBuffer *buf, int line, int col0, int col1, const char *tag)
     gtk_text_buffer_get_iter_at_line_offset(buf, &a, line, col0);
     gtk_text_buffer_get_iter_at_line_offset(buf, &b, line, col1);
     gtk_text_buffer_apply_tag_by_name(buf, tag, &a, &b);
+}
+
+/* Tags one Rich Void Text inline delimiter pair: the delimiter
+ * runs get "markup" (dimmed, and hideable), the inner text gets the
+ * real formatting tag. */
+static void
+apply_delim(GtkTextBuffer *buf, int line, int open0, int open1, int close0, int close1, const char *tag)
+{
+    apply_range(buf, line, open0, open1, "markup");
+    apply_range(buf, line, open1, close0, tag);
+    apply_range(buf, line, close0, close1, "markup");
 }
 
 static void
@@ -290,13 +208,23 @@ highlight_line(GtkTextBuffer *buf, int line, const char *text)
     if (p[0] == '#') {
         int level = 0, j = lead;
         while (text[j] == '#' && level < 6) { level++; j++; }
+        int content_start = j;
+        if (text[content_start] == ' ') content_start++;
         char tagname[16];
         g_snprintf(tagname, sizeof tagname, "header%d", level);
-        apply_range(buf, line, lead, len, tagname);
+        apply_range(buf, line, lead, content_start, "markup");
+        apply_range(buf, line, content_start, len, tagname);
         return;
     }
     if (p[0] == '>') {
-        apply_range(buf, line, lead, len, "blockquote");
+        int j = lead + 1;
+        if (text[j] == ' ') j++;
+        apply_range(buf, line, lead, j, "blockquote-marker");
+        apply_range(buf, line, j, len, "blockquote");
+        return;
+    }
+    if (strcmp(p, "---") == 0 || strcmp(p, "***") == 0) {
+        apply_range(buf, line, lead, len, "hr");
         return;
     }
 
@@ -317,17 +245,56 @@ highlight_line(GtkTextBuffer *buf, int line, const char *text)
         if (text[i] == '*' && i + 1 < len && text[i + 1] == '*') {
             int j = i + 2;
             while (j + 1 < len && !(text[j] == '*' && text[j + 1] == '*')) j++;
-            if (j + 1 < len) { apply_range(buf, line, i, j + 2, "bold"); i = j + 2; continue; }
+            if (j + 1 < len) { apply_delim(buf, line, i, i + 2, j, j + 2, "bold"); i = j + 2; continue; }
+        }
+        if (text[i] == '_' && i + 1 < len && text[i + 1] == '_') {
+            int j = i + 2;
+            while (j + 1 < len && !(text[j] == '_' && text[j + 1] == '_')) j++;
+            if (j + 1 < len) { apply_delim(buf, line, i, i + 2, j, j + 2, "underline"); i = j + 2; continue; }
+        }
+        if (text[i] == '~' && i + 1 < len && text[i + 1] == '~') {
+            int j = i + 2;
+            while (j + 1 < len && !(text[j] == '~' && text[j + 1] == '~')) j++;
+            if (j + 1 < len) { apply_delim(buf, line, i, i + 2, j, j + 2, "strikethrough"); i = j + 2; continue; }
+        }
+        if (text[i] == '=' && i + 1 < len && text[i + 1] == '=') {
+            int j = i + 2;
+            while (j + 1 < len && !(text[j] == '=' && text[j + 1] == '=')) j++;
+            if (j + 1 < len) { apply_delim(buf, line, i, i + 2, j, j + 2, "highlight"); i = j + 2; continue; }
         }
         if (text[i] == '`') {
             int j = i + 1;
             while (j < len && text[j] != '`') j++;
-            if (j < len) { apply_range(buf, line, i, j + 1, "code"); i = j + 1; continue; }
+            if (j < len) { apply_delim(buf, line, i, i + 1, j, j + 1, "code"); i = j + 1; continue; }
+        }
+        if (text[i] == '[') {
+            int close = i + 1;
+            while (close < len && text[close] != ']') close++;
+            if (close < len && text[close + 1] == '(') {
+                int urlend = close + 2;
+                while (urlend < len && text[urlend] != ')') urlend++;
+                if (urlend < len) {
+                    apply_range(buf, line, i, i + 1, "markup");            /* [ */
+                    apply_range(buf, line, i + 1, close, "link");          /* label */
+                    apply_range(buf, line, close, urlend + 1, "markup");   /* ](url) */
+                    i = urlend + 1; continue;
+                }
+            }
+        }
+        if (text[i] == '^') {
+            int j = i + 1;
+            while (j < len && text[j] != '^') j++;
+            if (j < len && j > i + 1) { apply_delim(buf, line, i, i + 1, j, j + 1, "superscript"); i = j + 1; continue; }
+        }
+        if (text[i] == '~') {
+            int j = i + 1;
+            while (j < len && text[j] != '~') j++;
+            if (j < len && j > i + 1) { apply_delim(buf, line, i, i + 1, j, j + 1, "subscript"); i = j + 1; continue; }
         }
         if (text[i] == '*') {
             int j = i + 1;
             while (j < len && text[j] != '*') j++;
-            if (j < len && j > i + 1) { apply_range(buf, line, i, j + 1, "italic"); i = j + 1; continue; }
+            if (j < len && j > i + 1) { apply_delim(buf, line, i, i + 1, j, j + 1, "italic"); i = j + 1; continue; }
         }
         i++;
     }
@@ -339,8 +306,9 @@ clear_all_tags(GtkTextBuffer *buf)
     GtkTextIter s, e;
     gtk_text_buffer_get_bounds(buf, &s, &e);
     static const char *names[] = {
-        "bold", "italic", "code", "link", "list-marker",
-        "blockquote-marker", "blockquote", "hr",
+        "bold", "italic", "underline", "strikethrough", "highlight",
+        "superscript", "subscript", "code", "link", "list-marker",
+        "blockquote-marker", "blockquote", "hr", "markup",
         "header1", "header2", "header3", "header4", "header5", "header6", NULL
     };
     for (int i = 0; names[i]; i++)
@@ -364,8 +332,6 @@ highlight_all_idle(gpointer data)
         highlight_line(st->buf, ln, text);
         g_free(text);
     }
-
-    if (st->preview_on) render_preview(st);
     return G_SOURCE_REMOVE;
 }
 
@@ -467,8 +433,13 @@ save_to(AppState *st, const gchar *path)
 static void
 add_filters(GtkFileChooser *chooser)
 {
+    GtkFileFilter *rvf = gtk_file_filter_new();
+    gtk_file_filter_set_name(rvf, "Rich Void Text (*.rvt)");
+    gtk_file_filter_add_pattern(rvf, "*.rvt");
+    gtk_file_chooser_add_filter(chooser, rvf);
+
     GtkFileFilter *vdoc = gtk_file_filter_new();
-    gtk_file_filter_set_name(vdoc, "VoidDocs (*.vdoc)");
+    gtk_file_filter_set_name(vdoc, "VoidDocs Markdown (*.vdoc)");
     gtk_file_filter_add_pattern(vdoc, "*.vdoc");
     gtk_file_chooser_add_filter(chooser, vdoc);
 
@@ -488,7 +459,7 @@ add_filters(GtkFileChooser *chooser)
     gtk_file_filter_add_pattern(all, "*");
     gtk_file_chooser_add_filter(chooser, all);
 
-    gtk_file_chooser_set_filter(chooser, vdoc);
+    gtk_file_chooser_set_filter(chooser, rvf);
 }
 
 static gboolean action_save(AppState *st);
@@ -554,12 +525,157 @@ action_new(AppState *st)
 }
 
 static void
-action_toggle_preview(AppState *st)
+action_exit(AppState *st)
 {
-    st->preview_on = !st->preview_on;
-    gtk_widget_set_visible(st->preview_scroller, st->preview_on);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st->toggle_preview_btn), st->preview_on);
-    if (st->preview_on) render_preview(st);
+    if (!confirm_discard(st)) return;
+    gtk_widget_destroy(st->window);
+}
+
+/* Show/Hide Markup: this is what makes the single page double as
+ * both the editor and the preview -- it flips the "invisible"
+ * property on the shared "markup" tag, hiding every bit of Rich
+ * Void Format punctuation while leaving the rendered formatting
+ * (bold/italic/headers/links/...) in place. Both the Home-tab and
+ * View-tab buttons drive this and stay in sync. */
+static void
+action_toggle_markup(AppState *st)
+{
+    st->show_markup = !st->show_markup;
+    if (st->markup_tag)
+        g_object_set(st->markup_tag, "invisible", !st->show_markup, NULL);
+
+    const char *label = st->show_markup ? "Hide Markup" : "Show Markup";
+    if (st->markup_toggle_btn) {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st->markup_toggle_btn), !st->show_markup);
+        gtk_button_set_label(GTK_BUTTON(st->markup_toggle_btn), label);
+    }
+    if (st->markup_toggle_btn_view) {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st->markup_toggle_btn_view), !st->show_markup);
+        gtk_button_set_label(GTK_BUTTON(st->markup_toggle_btn_view), label);
+    }
+}
+
+/* ================================================================
+ * Rich Void Text editing commands (Home + Insert tabs)
+ * ================================================================ */
+
+static void
+wrap_selection(AppState *st, const char *open, const char *close)
+{
+    GtkTextIter start, end;
+    gboolean has_sel = gtk_text_buffer_get_selection_bounds(st->buf, &start, &end);
+
+    if (!has_sel) {
+        GtkTextMark *insert = gtk_text_buffer_get_insert(st->buf);
+        gtk_text_buffer_get_iter_at_mark(st->buf, &start, insert);
+        end = start;
+    }
+
+    gchar *sel = gtk_text_buffer_get_text(st->buf, &start, &end, FALSE);
+    gchar *repl = g_strdup_printf("%s%s%s", open, sel, close);
+    gtk_text_buffer_delete(st->buf, &start, &end);
+    gtk_text_buffer_insert(st->buf, &start, repl, -1);
+    g_free(repl);
+    g_free(sel);
+    schedule_highlight(st);
+}
+
+static void action_bold(AppState *st)         { wrap_selection(st, "**", "**"); }
+static void action_italic(AppState *st)       { wrap_selection(st, "*", "*"); }
+static void action_underline(AppState *st)    { wrap_selection(st, "__", "__"); }
+static void action_strike(AppState *st)       { wrap_selection(st, "~~", "~~"); }
+static void action_highlight(AppState *st)    { wrap_selection(st, "==", "=="); }
+static void action_insert_code(AppState *st)  { wrap_selection(st, "`", "`"); }
+static void action_superscript(AppState *st)  { wrap_selection(st, "^", "^"); }
+static void action_subscript(AppState *st)    { wrap_selection(st, "~", "~"); }
+
+static void
+action_insert_link(AppState *st)
+{
+    GtkTextIter start, end;
+    gboolean has_sel = gtk_text_buffer_get_selection_bounds(st->buf, &start, &end);
+    gchar *label = has_sel ? gtk_text_buffer_get_text(st->buf, &start, &end, FALSE)
+                            : g_strdup("link text");
+    gchar *repl = g_strdup_printf("[%s](https://)", label);
+
+    if (has_sel) {
+        gtk_text_buffer_delete(st->buf, &start, &end);
+    } else {
+        GtkTextMark *insert = gtk_text_buffer_get_insert(st->buf);
+        gtk_text_buffer_get_iter_at_mark(st->buf, &start, insert);
+    }
+    gtk_text_buffer_insert(st->buf, &start, repl, -1);
+    g_free(repl);
+    g_free(label);
+    schedule_highlight(st);
+}
+
+static void
+action_insert_hr(AppState *st)
+{
+    GtkTextIter iter;
+    GtkTextMark *insert = gtk_text_buffer_get_insert(st->buf);
+    gtk_text_buffer_get_iter_at_mark(st->buf, &iter, insert);
+    gtk_text_buffer_insert(st->buf, &iter, "\n---\n", -1);
+    schedule_highlight(st);
+}
+
+/* ================================================================
+ * Layout / View tab: zoom
+ * ================================================================ */
+
+static void
+apply_zoom(AppState *st)
+{
+    PangoFontDescription *desc = pango_font_description_from_string(
+        "Consolas, Cascadia Code, monospace");
+    pango_font_description_set_size(desc, (gint)(11 * PANGO_SCALE * st->zoom_level));
+    gtk_widget_override_font(st->editor_view, desc);
+    pango_font_description_free(desc);
+
+    if (st->zoom_label) {
+        gchar *pct = g_strdup_printf("%d%%", (int)(st->zoom_level * 100 + 0.5));
+        gtk_label_set_text(GTK_LABEL(st->zoom_label), pct);
+        g_free(pct);
+    }
+}
+
+static void action_zoom_in(AppState *st)    { st->zoom_level = MIN(st->zoom_level + 0.1, 3.0); apply_zoom(st); }
+static void action_zoom_out(AppState *st)   { st->zoom_level = MAX(st->zoom_level - 0.1, 0.5); apply_zoom(st); }
+static void action_zoom_reset(AppState *st) { st->zoom_level = 1.0; apply_zoom(st); }
+
+/* ================================================================
+ * Review tab: word count
+ * ================================================================ */
+
+static void
+action_word_count(AppState *st)
+{
+    GtkTextIter s, e;
+    gtk_text_buffer_get_bounds(st->buf, &s, &e);
+    gchar *text = gtk_text_buffer_get_text(st->buf, &s, &e, FALSE);
+
+    glong chars = g_utf8_strlen(text, -1);
+    int words = 0;
+    gboolean in_word = FALSE;
+    for (const char *p = text; *p; p = g_utf8_next_char(p)) {
+        gunichar c = g_utf8_get_char(p);
+        if (g_unichar_isspace(c)) {
+            in_word = FALSE;
+        } else if (!in_word) {
+            in_word = TRUE;
+            words++;
+        }
+    }
+    int lines = gtk_text_buffer_get_line_count(st->buf);
+    g_free(text);
+
+    GtkWidget *dlg = gtk_message_dialog_new(GTK_WINDOW(st->window),
+        GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+        "%d words, %ld characters, %d lines.", words, chars, lines);
+    gtk_window_set_title(GTK_WINDOW(dlg), "Word Count");
+    gtk_dialog_run(GTK_DIALOG(dlg));
+    gtk_widget_destroy(dlg);
 }
 
 /* ================================================================
@@ -592,7 +708,13 @@ on_key_press(GtkWidget *w, GdkEventKey *ev, gpointer data)
             return TRUE;
         case GDK_KEY_e: case GDK_KEY_E:
         case GDK_KEY_p: case GDK_KEY_P:
-            action_toggle_preview(st); return TRUE;
+            action_toggle_markup(st); return TRUE;
+        case GDK_KEY_k: case GDK_KEY_K:
+            action_insert_link(st); return TRUE;
+        case GDK_KEY_equal: case GDK_KEY_plus:
+            action_zoom_in(st); return TRUE;
+        case GDK_KEY_minus:
+            action_zoom_out(st); return TRUE;
         default: return FALSE;
     }
 }
@@ -606,23 +728,265 @@ make_toolbar_button(const char *label, GCallback cb, AppState *st)
     return btn;
 }
 
+/* Small square button for the quick-access strip (New/Open/Save...) */
+static GtkWidget *
+make_qat_button(const char *label, const char *tooltip, GCallback cb, AppState *st)
+{
+    GtkWidget *btn = gtk_button_new_with_label(label);
+    gtk_widget_set_name(btn, "vd-qatbtn");
+    gtk_widget_set_tooltip_text(btn, tooltip);
+    g_signal_connect_swapped(btn, "clicked", cb, st);
+    return btn;
+}
+
+/* Wraps a row of controls into a captioned ribbon group: the controls
+ * on top, a small centered caption ("Font", "Views", ...) below --
+ * exactly how Word groups its ribbon commands. */
+static GtkWidget *
+make_ribbon_group(const char *caption, GtkWidget *body)
+{
+    GtkWidget *group = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    gtk_widget_set_name(group, "vd-group");
+
+    gtk_widget_set_name(body, "vd-group-body");
+    gtk_widget_set_valign(body, GTK_ALIGN_CENTER);
+    gtk_box_pack_start(GTK_BOX(group), body, TRUE, TRUE, 0);
+
+    GtkWidget *cap = gtk_label_new(caption);
+    gtk_widget_set_name(cap, "vd-group-caption");
+    gtk_box_pack_start(GTK_BOX(group), cap, FALSE, FALSE, 0);
+
+    return group;
+}
+
+static GtkWidget *
+make_ribbon_separator(void)
+{
+    GtkWidget *sep = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
+    gtk_widget_set_name(sep, "vd-ribbon-sep");
+    return sep;
+}
+
+/* ---- every ribbon tab's actual command row ---- */
+
+static GtkWidget *
+build_file_ribbon(AppState *st)
+{
+    GtkWidget *ribbon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(ribbon, "vd-ribbon-row");
+
+    GtkWidget *body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(body), make_toolbar_button("New",     G_CALLBACK(action_new),     st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(body), make_toolbar_button("Open",    G_CALLBACK(action_open),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(body), make_toolbar_button("Save",    G_CALLBACK(action_save),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(body), make_toolbar_button("Save As", G_CALLBACK(action_save_as), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("File", body), FALSE, FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_separator(), FALSE, FALSE, 0);
+
+    GtkWidget *close_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(close_body), make_toolbar_button("Exit", G_CALLBACK(action_exit), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Close", close_body), FALSE, FALSE, 6);
+
+    return ribbon;
+}
+
+static GtkWidget *
+build_home_ribbon(AppState *st)
+{
+    GtkWidget *ribbon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(ribbon, "vd-ribbon-row");
+
+    GtkWidget *doc_group_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(doc_group_body), make_toolbar_button("New",  G_CALLBACK(action_new),     st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(doc_group_body), make_toolbar_button("Open", G_CALLBACK(action_open),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(doc_group_body), make_toolbar_button("Save", G_CALLBACK(action_save),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Document", doc_group_body), FALSE, FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_separator(), FALSE, FALSE, 0);
+
+    GtkWidget *font_group_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+    GtkWidget *btn_bold = make_toolbar_button("B",  G_CALLBACK(action_bold),      st);
+    GtkWidget *btn_ital = make_toolbar_button("I",  G_CALLBACK(action_italic),    st);
+    GtkWidget *btn_undl = make_toolbar_button("U",  G_CALLBACK(action_underline), st);
+    GtkWidget *btn_strk = make_toolbar_button("S",  G_CALLBACK(action_strike),    st);
+    GtkWidget *btn_high = make_toolbar_button("Hl", G_CALLBACK(action_highlight), st);
+    gtk_widget_set_name(gtk_bin_get_child(GTK_BIN(btn_bold)), "vd-glyph-bold");
+    gtk_widget_set_name(gtk_bin_get_child(GTK_BIN(btn_ital)), "vd-glyph-italic");
+    gtk_widget_set_name(gtk_bin_get_child(GTK_BIN(btn_undl)), "vd-glyph-underline");
+    gtk_box_pack_start(GTK_BOX(font_group_body), btn_bold, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(font_group_body), btn_ital, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(font_group_body), btn_undl, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(font_group_body), btn_strk, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(font_group_body), btn_high, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Font", font_group_body), FALSE, FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_separator(), FALSE, FALSE, 0);
+
+    GtkWidget *view_group_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    st->markup_toggle_btn = gtk_toggle_button_new_with_label("Hide Markup");
+    gtk_widget_set_name(st->markup_toggle_btn, "vd-toolbtn");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st->markup_toggle_btn), FALSE);
+    g_signal_connect_swapped(st->markup_toggle_btn, "clicked", G_CALLBACK(action_toggle_markup), st);
+    gtk_box_pack_start(GTK_BOX(view_group_body), st->markup_toggle_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Views", view_group_body), FALSE, FALSE, 6);
+
+    return ribbon;
+}
+
+static GtkWidget *
+build_insert_ribbon(AppState *st)
+{
+    GtkWidget *ribbon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(ribbon, "vd-ribbon-row");
+
+    GtkWidget *insert_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(insert_body), make_toolbar_button("Link", G_CALLBACK(action_insert_link), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(insert_body), make_toolbar_button("Code", G_CALLBACK(action_insert_code), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(insert_body), make_toolbar_button("Rule", G_CALLBACK(action_insert_hr),   st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Insert", insert_body), FALSE, FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_separator(), FALSE, FALSE, 0);
+
+    GtkWidget *script_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(script_body), make_toolbar_button("x\xc2\xb2",     G_CALLBACK(action_superscript), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(script_body), make_toolbar_button("x\xe2\x82\x82", G_CALLBACK(action_subscript),   st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Script", script_body), FALSE, FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_separator(), FALSE, FALSE, 0);
+
+    GtkWidget *markup_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(markup_body), make_toolbar_button("Highlight", G_CALLBACK(action_highlight), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Markup", markup_body), FALSE, FALSE, 6);
+
+    return ribbon;
+}
+
+static GtkWidget *
+build_layout_ribbon(AppState *st)
+{
+    GtkWidget *ribbon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(ribbon, "vd-ribbon-row");
+
+    GtkWidget *zoom_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(zoom_body), make_toolbar_button("Zoom \xe2\x88\x92", G_CALLBACK(action_zoom_out),   st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(zoom_body), make_toolbar_button("Zoom +",           G_CALLBACK(action_zoom_in),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(zoom_body), make_toolbar_button("Reset",            G_CALLBACK(action_zoom_reset), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Zoom", zoom_body), FALSE, FALSE, 6);
+
+    return ribbon;
+}
+
+static GtkWidget *
+build_review_ribbon(AppState *st)
+{
+    GtkWidget *ribbon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(ribbon, "vd-ribbon-row");
+
+    GtkWidget *body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(body), make_toolbar_button("Word Count", G_CALLBACK(action_word_count), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Proofing", body), FALSE, FALSE, 6);
+
+    return ribbon;
+}
+
+static GtkWidget *
+build_view_ribbon(AppState *st)
+{
+    GtkWidget *ribbon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_name(ribbon, "vd-ribbon-row");
+
+    GtkWidget *show_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    st->markup_toggle_btn_view = gtk_toggle_button_new_with_label("Hide Markup");
+    gtk_widget_set_name(st->markup_toggle_btn_view, "vd-toolbtn");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st->markup_toggle_btn_view), FALSE);
+    g_signal_connect_swapped(st->markup_toggle_btn_view, "clicked", G_CALLBACK(action_toggle_markup), st);
+    gtk_box_pack_start(GTK_BOX(show_body), st->markup_toggle_btn_view, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Show", show_body), FALSE, FALSE, 6);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_separator(), FALSE, FALSE, 0);
+
+    GtkWidget *zoom_body = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
+    gtk_box_pack_start(GTK_BOX(zoom_body), make_toolbar_button("Zoom \xe2\x88\x92", G_CALLBACK(action_zoom_out),   st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(zoom_body), make_toolbar_button("Zoom +",           G_CALLBACK(action_zoom_in),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(zoom_body), make_toolbar_button("Reset",            G_CALLBACK(action_zoom_reset), st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(ribbon), make_ribbon_group("Zoom", zoom_body), FALSE, FALSE, 6);
+
+    return ribbon;
+}
+
+/* Clicking a ribbon tab switches the visible ribbon-stack page and
+ * restyles the tab row so exactly one tab looks "active" -- a real,
+ * working tab strip instead of decorative labels. */
+static void
+on_tab_clicked(GtkButton *btn, gpointer data)
+{
+    AppState *st = data;
+    const char *page = g_object_get_data(G_OBJECT(btn), "vd-page");
+    if (page) gtk_stack_set_visible_child_name(GTK_STACK(st->ribbon_stack), page);
+
+    for (int i = 0; i < N_TABS; i++) {
+        gboolean active = (st->tab_buttons[i] == GTK_WIDGET(btn));
+        gtk_widget_set_name(st->tab_buttons[i], active ? "vd-tab-active" : "vd-tab");
+    }
+}
+
+static GtkWidget *
+make_ribbon_tab_button(const char *label, const char *page, gboolean active, AppState *st)
+{
+    GtkWidget *btn = gtk_button_new_with_label(label);
+    gtk_widget_set_name(btn, active ? "vd-tab-active" : "vd-tab");
+    gtk_button_set_relief(GTK_BUTTON(btn), GTK_RELIEF_NONE);
+    gtk_widget_set_focus_on_click(btn, FALSE);
+    g_object_set_data(G_OBJECT(btn), "vd-page", (gpointer)page);
+    g_signal_connect(btn, "clicked", G_CALLBACK(on_tab_clicked), st);
+    return btn;
+}
+
 static void
 apply_css(void)
 {
     GtkCssProvider *css = gtk_css_provider_new();
     const gchar *style =
-        "window { background-color: " CSS_BG "; }"
-        "#vd-toolbar { background-color: " CSS_PANEL_BG "; padding: 6px; border-bottom: 1px solid " CSS_EDGE "; }"
-        "#vd-toolbtn { background-image: none; background-color: " CSS_EDGE "; color: " CSS_TEXT ";"
-        "  border: 1px solid " CSS_EDGE "; border-radius: 6px; padding: 4px 10px; }"
-        "#vd-toolbtn:hover { background-color: " CSS_ACCENT "; border-color: " CSS_ACCENT "; }"
-        "#vd-toolbtn:checked, #vd-toolbtn:active { background-color: " CSS_ACCENT "; color: #150707; }"
-        "#vd-status { color: " CSS_TEXT_MUTED "; padding: 3px 10px; font-size: 90%; }"
-        "textview { background-color: " CSS_BG "; color: " CSS_TEXT "; caret-color: " CSS_ACCENT "; }"
-        "#vd-editor, #vd-editor text { font-family: monospace; font-size: 11pt; }"
-        "textview text { background-color: " CSS_BG "; }"
-        "#vd-preview textview, #vd-preview textview text { background-color: " CSS_PANEL_BG "; }"
-        "paned > separator { background-color: " CSS_EDGE "; min-width: 2px; }";
+        "window { background-color: " CSS_BG "; font-family: 'Segoe UI', 'Aptos', 'Noto Sans', sans-serif; }"
+        "label, button { font-family: 'Segoe UI', 'Aptos', 'Noto Sans', sans-serif; }"
+
+        /* -- quick access strip (dark blue, top of window) -- */
+        "#vd-titlebar { background-color: " CSS_TITLEBAR "; padding: 5px 10px; }"
+        "#vd-qatbtn { background-image: none; background-color: transparent; color: #ffffff;"
+        "  border: 1px solid transparent; border-radius: 3px; padding: 3px 9px; font-size: 90%; }"
+        "#vd-qatbtn:hover { background-color: " CSS_TITLEBAR_DK "; border-color: rgba(255,255,255,0.35); }"
+        "#vd-brand { color: #ffffff; font-weight: 600; font-size: 95%; }"
+        "#vd-docname { color: #ffffff; font-size: 90%; opacity: 0.92; }"
+
+        /* -- ribbon tab strip (real, clickable buttons now) -- */
+        "#vd-tabstrip { background-color: " CSS_PANEL_BG "; border-bottom: 1px solid " CSS_EDGE "; padding: 0px 6px; }"
+        "#vd-tab, #vd-tab-active { border: none; background-image: none; box-shadow: none; outline: none; }"
+        "#vd-tab { color: " CSS_TEXT_MUTED "; padding: 6px 12px; font-size: 92%; background-color: transparent; }"
+        "#vd-tab:hover { color: " CSS_ACCENT "; }"
+        "#vd-tab-active { color: " CSS_ACCENT "; padding: 6px 12px; font-size: 92%; font-weight: 600;"
+        "  background-color: " PAGE_BG "; border-top: 2px solid " CSS_ACCENT "; }"
+
+        /* -- ribbon command row -- */
+        "#vd-ribbon-stack, #vd-ribbon-row { background-color: " PAGE_BG "; }"
+        "#vd-ribbon-row { padding: 6px 10px; border-bottom: 1px solid " CSS_EDGE "; }"
+        "#vd-group-caption { color: " CSS_TEXT_MUTED "; font-size: 78%; padding-top: 2px; }"
+        "#vd-ribbon-sep { background-color: " CSS_EDGE "; min-width: 1px; margin: 2px 8px; }"
+
+        "#vd-toolbtn { background-image: none; background-color: " PAGE_BG "; color: " CSS_TEXT ";"
+        "  border: 1px solid transparent; border-radius: 4px; padding: 5px 11px; min-width: 20px; }"
+        "#vd-toolbtn:hover { background-color: " CSS_ACCENT_TINT "; border-color: " CSS_ACCENT_HOV "; }"
+        "#vd-toolbtn:checked, #vd-toolbtn:active { background-color: #CFE1F7; border-color: " CSS_ACCENT "; color: " CSS_ACCENT "; }"
+        "#vd-glyph-bold { font-weight: 800; font-size: 105%; }"
+        "#vd-glyph-italic { font-style: italic; font-size: 105%; }"
+        "#vd-glyph-underline { text-decoration-line: underline; font-size: 105%; }"
+
+        /* -- document canvas: gray backdrop behind a white "page" -- */
+        "#vd-canvas { background-color: " CSS_BG "; }"
+        "#vd-page { background-color: " PAGE_BG "; border: 1px solid " CSS_EDGE ";"
+        "  box-shadow: 0 1px 6px rgba(0,0,0,0.22); }"
+
+        "#vd-status { background-color: " CSS_PANEL_BG "; color: " CSS_TEXT_MUTED ";"
+        "  padding: 4px 12px; font-size: 88%; border-top: 1px solid " CSS_EDGE "; }"
+        "#vd-zoom { color: " CSS_TEXT_MUTED "; padding: 4px 12px; font-size: 88%; }"
+
+        "textview { background-color: " PAGE_BG "; color: " PAGE_TEXT "; caret-color: " CSS_ACCENT "; }"
+        "textview text { background-color: " PAGE_BG "; color: " PAGE_TEXT "; }"
+        "#vd-editor, #vd-editor text { font-family: 'Aptos', 'Calibri', 'Segoe UI', sans-serif; font-size: 12pt; }";
     gtk_css_provider_load_from_data(css, style, -1, NULL);
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
         GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -633,7 +997,8 @@ static AppState *
 build_window(GtkApplication *app)
 {
     AppState *st = g_new0(AppState, 1);
-    st->preview_on = TRUE;
+    st->show_markup = TRUE;
+    st->zoom_level = 1.0;
 
     st->window = gtk_application_window_new(app);
     gtk_window_set_default_size(GTK_WINDOW(st->window), 860, 620);
@@ -642,62 +1007,101 @@ build_window(GtkApplication *app)
     GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(st->window), root);
 
-    /* toolbar */
-    GtkWidget *toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    gtk_widget_set_name(toolbar, "vd-toolbar");
-    gtk_box_pack_start(GTK_BOX(root), toolbar, FALSE, FALSE, 0);
+    /* ---- quick access strip (dark blue, top of window) ---- */
+    GtkWidget *titlebar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    gtk_widget_set_name(titlebar, "vd-titlebar");
+    gtk_box_pack_start(GTK_BOX(root), titlebar, FALSE, FALSE, 0);
 
-    gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("New", G_CALLBACK(action_new), st), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("Open", G_CALLBACK(action_open), st), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("Save", G_CALLBACK(action_save), st), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(toolbar), make_toolbar_button("Save As", G_CALLBACK(action_save_as), st), FALSE, FALSE, 0);
+    GtkWidget *brand = gtk_label_new("VoidDocs");
+    gtk_widget_set_name(brand, "vd-brand");
+    gtk_box_pack_start(GTK_BOX(titlebar), brand, FALSE, FALSE, 6);
 
-    GtkWidget *spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_box_pack_start(GTK_BOX(toolbar), spacer, TRUE, TRUE, 0);
+    GtkWidget *qat_sep = gtk_label_new("\xe2\x94\x82");
+    gtk_widget_set_name(qat_sep, "vd-docname");
+    gtk_box_pack_start(GTK_BOX(titlebar), qat_sep, FALSE, FALSE, 4);
 
-    st->toggle_preview_btn = gtk_toggle_button_new_with_label("Preview");
-    gtk_widget_set_name(st->toggle_preview_btn, "vd-toolbtn");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st->toggle_preview_btn), TRUE);
-    g_signal_connect_swapped(st->toggle_preview_btn, "clicked", G_CALLBACK(action_toggle_preview), st);
-    gtk_box_pack_start(GTK_BOX(toolbar), st->toggle_preview_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(titlebar), make_qat_button("New",     "New (Ctrl+N)",           G_CALLBACK(action_new),     st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(titlebar), make_qat_button("Open",    "Open (Ctrl+O)",          G_CALLBACK(action_open),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(titlebar), make_qat_button("Save",    "Save (Ctrl+S)",          G_CALLBACK(action_save),    st), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(titlebar), make_qat_button("Save As", "Save As (Ctrl+Shift+S)", G_CALLBACK(action_save_as), st), FALSE, FALSE, 0);
 
-    /* editor + preview panes */
-    st->paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-    gtk_box_pack_start(GTK_BOX(root), st->paned, TRUE, TRUE, 0);
+    GtkWidget *titlebar_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_box_pack_start(GTK_BOX(titlebar), titlebar_spacer, TRUE, TRUE, 0);
+
+    st->titlebar_doc_label = gtk_label_new(DEFAULT_FILENAME);
+    gtk_widget_set_name(st->titlebar_doc_label, "vd-docname");
+    gtk_box_pack_end(GTK_BOX(titlebar), st->titlebar_doc_label, FALSE, FALSE, 8);
+
+    /* ---- ribbon tab strip: real buttons that switch ribbon pages ---- */
+    GtkWidget *tabstrip = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+    gtk_widget_set_name(tabstrip, "vd-tabstrip");
+    gtk_box_pack_start(GTK_BOX(root), tabstrip, FALSE, FALSE, 0);
+
+    /* ---- ribbon: a GtkStack, one real command row per tab ---- */
+    st->ribbon_stack = gtk_stack_new();
+    gtk_widget_set_name(st->ribbon_stack, "vd-ribbon-stack");
+    gtk_stack_set_transition_type(GTK_STACK(st->ribbon_stack), GTK_STACK_TRANSITION_TYPE_NONE);
+    gtk_box_pack_start(GTK_BOX(root), st->ribbon_stack, FALSE, FALSE, 0);
+
+    static const char *tab_names[N_TABS]  = { "File", "Home", "Insert", "Layout", "Review", "View" };
+    static const char *tab_pages[N_TABS]  = { "file", "home", "insert", "layout", "review", "view" };
+
+    GtkWidget *pages[N_TABS];
+    pages[0] = build_file_ribbon(st);
+    pages[1] = build_home_ribbon(st);
+    pages[2] = build_insert_ribbon(st);
+    pages[3] = build_layout_ribbon(st);
+    pages[4] = build_review_ribbon(st);
+    pages[5] = build_view_ribbon(st);
+
+    for (int i = 0; i < N_TABS; i++) {
+        gboolean active = (i == 1); /* Home starts active */
+        st->tab_buttons[i] = make_ribbon_tab_button(tab_names[i], tab_pages[i], active, st);
+        gtk_box_pack_start(GTK_BOX(tabstrip), st->tab_buttons[i], FALSE, FALSE, 0);
+        gtk_stack_add_named(GTK_STACK(st->ribbon_stack), pages[i], tab_pages[i]);
+    }
+    /* NOTE: gtk_stack_set_visible_child_name must be called after the
+     * window is shown (see on_activate/on_open) -- calling it here,
+     * before the stack's children are realized, is silently ignored
+     * by GTK and would leave the first-added tab ("File") visible
+     * even though the "Home" tab is styled active. */
+
+    /* ---- document canvas: gray backdrop, single white "page" ----
+     * This one page IS both editor and preview: typing shows live
+     * formatting, and the Show/Hide Markup toggle (Home or View tab)
+     * switches whether the Rich Void Text punctuation is visible. */
+    GtkWidget *canvas = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_name(canvas, "vd-canvas");
+    gtk_container_set_border_width(GTK_CONTAINER(canvas), 18);
+    gtk_box_pack_start(GTK_BOX(root), canvas, TRUE, TRUE, 0);
 
     GtkWidget *editor_scroller = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_name(editor_scroller, "vd-page");
     st->editor_view = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(st->editor_view), GTK_WRAP_WORD_CHAR);
-    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(st->editor_view), 12);
-    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(st->editor_view), 12);
-    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(st->editor_view), 10);
+    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(st->editor_view), 48);
+    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(st->editor_view), 48);
+    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(st->editor_view), 28);
     gtk_widget_set_name(st->editor_view, "vd-editor");
     gtk_container_add(GTK_CONTAINER(editor_scroller), st->editor_view);
-    gtk_paned_pack1(GTK_PANED(st->paned), editor_scroller, TRUE, FALSE);
+    gtk_box_pack_start(GTK_BOX(canvas), editor_scroller, TRUE, TRUE, 0);
 
-    st->preview_scroller = gtk_scrolled_window_new(NULL, NULL);
-    gtk_widget_set_name(st->preview_scroller, "vd-preview");
-    st->preview_view = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(st->preview_view), FALSE);
-    gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(st->preview_view), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(st->preview_view), GTK_WRAP_WORD_CHAR);
-    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(st->preview_view), 16);
-    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(st->preview_view), 16);
-    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(st->preview_view), 10);
-    gtk_container_add(GTK_CONTAINER(st->preview_scroller), st->preview_view);
-    gtk_paned_pack2(GTK_PANED(st->paned), st->preview_scroller, TRUE, FALSE);
-    gtk_paned_set_position(GTK_PANED(st->paned), 430);
+    /* ---- status bar (word-count / zoom, Word style) ---- */
+    GtkWidget *statusbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_box_pack_start(GTK_BOX(root), statusbar, FALSE, FALSE, 0);
 
-    /* status bar */
     st->status_label = gtk_label_new("");
     gtk_widget_set_name(st->status_label, "vd-status");
     gtk_widget_set_halign(st->status_label, GTK_ALIGN_START);
-    gtk_box_pack_start(GTK_BOX(root), st->status_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(statusbar), st->status_label, TRUE, TRUE, 0);
+
+    st->zoom_label = gtk_label_new("100%");
+    gtk_widget_set_name(st->zoom_label, "vd-zoom");
+    gtk_widget_set_halign(st->zoom_label, GTK_ALIGN_END);
+    gtk_box_pack_end(GTK_BOX(statusbar), st->zoom_label, FALSE, FALSE, 0);
 
     st->buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(st->editor_view));
-    st->preview_buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(st->preview_view));
-    install_tags(st->buf, FALSE);
-    install_tags(st->preview_buf, TRUE);
+    install_tags(st->buf, st);
 
     g_signal_connect(st->buf, "changed", G_CALLBACK(on_buffer_changed), st);
     g_signal_connect(st->window, "delete-event", G_CALLBACK(on_delete_event), st);
@@ -717,7 +1121,7 @@ on_activate(GtkApplication *app, gpointer data)
     (void)data;
     AppState *st = build_window(app);
     gtk_widget_show_all(st->window);
-    gtk_widget_set_visible(st->preview_scroller, st->preview_on);
+    gtk_stack_set_visible_child_name(GTK_STACK(st->ribbon_stack), "home");
     schedule_highlight(st);
     gtk_widget_grab_focus(st->editor_view);
 }
@@ -728,7 +1132,7 @@ on_open(GtkApplication *app, GFile **files, gint n_files, const gchar *hint, gpo
     (void)hint; (void)data;
     AppState *st = build_window(app);
     gtk_widget_show_all(st->window);
-    gtk_widget_set_visible(st->preview_scroller, st->preview_on);
+    gtk_stack_set_visible_child_name(GTK_STACK(st->ribbon_stack), "home");
     if (n_files > 0) {
         gchar *path = g_file_get_path(files[0]);
         if (path) { load_file(st, path); g_free(path); }

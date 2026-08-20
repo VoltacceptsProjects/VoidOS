@@ -1,3 +1,12 @@
+voidwm (1.0.2) stable; urgency=medium
+
+  * Retheme: switch default "ember" palette to "nightfall" -- dark
+    indigo/violet glass, styled after BazziteOS's GNOME desktop
+    (bar, dock, titlebars, borders, accent all repainted).
+  * No functional/behavioral changes.
+
+ -- VoidOS Project <voidos@example.com>  Thu, 20 Aug 2026 13:00:00 +0000
+
 voidwm (1.0.0) stable; urgency=medium
 
   * Fix: dock/bar no longer go stale on VM/RandR screen resizes
