@@ -5,3 +5,10 @@ set -e
 
 chmod 755 /usr/local/bin/lotus
 chmod 755 /etc/profile.d/lotus.sh
+
+# Calamares desktop launcher: exec bit + mark as trusted so GNOME
+# runs it directly instead of showing "Untrusted application launcher"
+chmod 755 /etc/skel/Desktop/calamares.desktop
+if command -v gio >/dev/null 2>&1; then
+    gio set /etc/skel/Desktop/calamares.desktop "metadata::trusted" yes || true
+fi

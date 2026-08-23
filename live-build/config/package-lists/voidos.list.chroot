@@ -57,6 +57,13 @@ firmware-misc-nonfree
 firmware-amd-graphics
 
 # ------------------------------------------------------------------
+#  Installer (Calamares - graphical install-to-disk, launched from
+#  the live desktop; see calamares .desktop launcher in includes.chroot)
+# ------------------------------------------------------------------
+calamares
+calamares-settings-debian
+
+# ------------------------------------------------------------------
 #  Misc
 # ------------------------------------------------------------------
 sudo

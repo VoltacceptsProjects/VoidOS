@@ -77,8 +77,10 @@ in the workflow matters — GitHub's standard Linux runners only have
   (neofetch-style). Delete that file from `includes.chroot` if you'd
   rather it only run when typed manually.
 
-- **No `debian-installer`.** This produces a live/boot-and-use ISO
-  (`--debian-installer none`), not one with an install-to-disk wizard.
-  If you want Calamares or the standard Debian installer bundled too,
-  change that flag to `live` and add `calamares` /
-  `calamares-settings-debian` to the package list.
+- **Calamares installer included.** `--debian-installer` is set to
+  `live`, and `calamares` / `calamares-settings-debian` are in the
+  package list, so the ISO boots straight into the live GNOME desktop
+  *and* has an "Install VoidOS" icon on the desktop (via
+  `/etc/skel/Desktop/calamares.desktop`) for installing to disk.
+  Revert `--debian-installer` to `none` and drop those two packages
+  from the list if you want a live-only image again.
