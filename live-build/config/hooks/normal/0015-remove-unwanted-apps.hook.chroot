@@ -1,0 +1,27 @@
+#!/bin/sh
+# gnome-core pulls a handful of these in as Recommends (we build with
+# --apt-recommends true for driver/firmware coverage elsewhere, so we
+# can't just turn recommends off globally). Purge the ones we don't
+# want individually instead. Each is checked with dpkg -s first so the
+# build doesn't fail if a package was never installed to begin with.
+set -e
+
+UNWANTED="
+gnome-weather
+gnome-contacts
+gnome-calendar
+gnome-maps
+simple-scan
+gnome-tour
+gnome-connections
+malcontent
+"
+
+for pkg in $UNWANTED; do
+    if dpkg -s "$pkg" >/dev/null 2>&1; then
+        apt-get purge -y "$pkg"
+    fi
+done
+
+apt-get autoremove -y
+apt-get clean

@@ -18,8 +18,8 @@ live-build/
     0030-compile-schemas.hook.chroot  <- rebuilds glib schema cache for the wallpaper override
   config/includes.chroot/
     usr/local/bin/lotus                          <- your Lotus script
-    usr/share/backgrounds/voltaccept/wallpaper.png
-    usr/share/glib-2.0/schemas/99_voltaccept.gschema.override
+    usr/share/backgrounds/voidos/wallpaper.png
+    usr/share/glib-2.0/schemas/99_voidos.gschema.override
     etc/profile.d/lotus.sh
 ```
 

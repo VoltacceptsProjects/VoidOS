@@ -5,7 +5,7 @@
 #  and friends. Inspired by the "fetch" style of tool (neofetch,
 #  screenfetch, etc.) but written independently.
 #
-#  Created by Allen Lambert Jr. (Voltaccept)
+#  Created by Allen Lambert Jr. (VoidOS)
 #  https://voltaccept.com
 # ------------------------------------------------------------------
 
@@ -269,7 +269,7 @@ def build_info_lines():
     # Signature / credit line.
     lines.append("")
     lines.append(f"{C4}Made with {C1}♥{C4} by {C3}{BOLD}Allen Lambert Jr.{RESET} "
-                 f"{C4}({C1}Voltaccept{C4}){RESET}")
+                 f"{C4}({C1}VoidOS{C4}){RESET}")
 
     return lines
 
