@@ -11,7 +11,9 @@ on:
 jobs:
   build-iso:
     runs-on: ubuntu-latest
-    container: debian:trixie
+    container:
+      image: debian:trixie
+      options: --privileged
     timeout-minutes: 240
 
     steps:
