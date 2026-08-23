@@ -57,7 +57,7 @@ jobs:
         working-directory: live-build
         run: |
           iso="$(ls -- *.iso | head -n1)"
-          mv -- "$iso" "voltaccept-debian13-$(date +%Y%m%d).iso"
+          mv -- "$iso" "voidos-debian13-$(date +%Y%m%d).iso"
           ls -lh -- *.iso
 
       - name: Upload build log
@@ -71,7 +71,7 @@ jobs:
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: voltaccept-debian13-iso
+          name: voidos-debian13-iso
           path: live-build/*.iso
           retention-days: 14
           compression-level: 0

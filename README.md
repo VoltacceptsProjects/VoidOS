@@ -1,4 +1,4 @@
-# Voltaccept Debian 13 ISO builder
+# VoidOS Debian 13 ISO builder
 
 Builds a custom Debian 13 (trixie) live/installable ISO with GNOME and
 only the requested applications, via `live-build`, run entirely inside
@@ -11,7 +11,7 @@ GitHub Actions.
 live-build/
   auto/config                     <- `lb config` call (distro, archive areas, ISO metadata)
   auto/clean
-  config/package-lists/voltaccept.list.chroot   <- exact package list
+  config/package-lists/voidos.list.chroot       <- exact package list
   config/hooks/normal/
     0010-flatpak-apps.hook.chroot     <- installs Steam + Modrinth via Flathub
     0020-permissions.hook.chroot      <- fixes exec bits on included files
@@ -28,7 +28,7 @@ live-build/
 Push this to a repo and either push to `main` (path-filtered on
 `live-build/**`) or run it manually from the Actions tab
 (`workflow_dispatch`). The finished ISO is uploaded as a build
-artifact (`voltaccept-debian13-iso`), not committed to the repo.
+artifact (`voidos-debian13-iso`), not committed to the repo.
 
 Build time is typically 30-90 minutes depending on GitHub's mirror
 speed; the job timeout is set to 4 hours as headroom. GNOME + Steam's
