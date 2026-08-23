@@ -3,6 +3,9 @@ set -e
 
 lb config noauto \
     --distribution trixie \
+    --mirror-bootstrap "http://deb.debian.org/debian" \
+    --mirror-chroot "http://deb.debian.org/debian" \
+    --mirror-binary "http://deb.debian.org/debian" \
     --archive-areas "main contrib non-free non-free-firmware" \
     --architectures amd64 \
     --binary-images iso-hybrid \

@@ -11,23 +11,27 @@ on:
 jobs:
   build-iso:
     runs-on: ubuntu-latest
+    container: debian:trixie
     timeout-minutes: 240
 
     steps:
+      - name: Prepare Debian container
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Free up runner disk space
+      - name: Clean package cache
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /opt/hostedtoolcache/CodeQL "${AGENT_TOOLSDIRECTORY:-}" || true
-          sudo docker image prune -a -f || true
+          apt-get clean
           df -h
 
       - name: Install live-build and ISO tooling
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get update
+          apt-get install -y \
             live-build \
             debootstrap \
             debian-archive-keyring \
@@ -46,12 +50,12 @@ jobs:
 
       - name: Configure live-build
         working-directory: live-build
-        run: sudo lb config
+        run: lb config
 
       - name: Build the ISO
         working-directory: live-build
         run: |
-          sudo lb build 2>&1 | tee build.log
+          lb build 2>&1 | tee build.log
 
       - name: Rename output ISO
         working-directory: live-build
