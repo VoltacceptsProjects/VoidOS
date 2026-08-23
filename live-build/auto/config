@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+lb config noauto \
+    --distribution trixie \
+    --archive-areas "main contrib non-free non-free-firmware" \
+    --architectures amd64 \
+    --binary-images iso-hybrid \
+    --debian-installer none \
+    --firmware-binary true \
+    --firmware-chroot true \
+    --apt-recommends true \
+    --iso-application "Voltaccept OS" \
+    --iso-publisher "Voltaccept - voltaccept.com" \
+    --iso-volume "VOLTACCEPT" \
+    --memtest none \
+    --win32-loader false \
+    "${@}"

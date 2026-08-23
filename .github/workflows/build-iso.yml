@@ -1,0 +1,77 @@
+name: Build Debian 13 Custom ISO
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "live-build/**"
+      - ".github/workflows/build-iso.yml"
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free up runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL "${AGENT_TOOLSDIRECTORY:-}" || true
+          sudo docker image prune -a -f || true
+          df -h
+
+      - name: Install live-build and ISO tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            live-build \
+            debootstrap \
+            debian-archive-keyring \
+            xorriso \
+            isolinux \
+            syslinux-common \
+            squashfs-tools \
+            dosfstools \
+            mtools \
+            fdisk
+
+      - name: Make live-build scripts executable
+        run: |
+          chmod +x live-build/auto/*
+          chmod +x live-build/config/hooks/normal/*.chroot
+
+      - name: Configure live-build
+        working-directory: live-build
+        run: sudo lb config
+
+      - name: Build the ISO
+        working-directory: live-build
+        run: |
+          sudo lb build 2>&1 | tee build.log
+
+      - name: Rename output ISO
+        working-directory: live-build
+        run: |
+          iso="$(ls -- *.iso | head -n1)"
+          mv -- "$iso" "voltaccept-debian13-$(date +%Y%m%d).iso"
+          ls -lh -- *.iso
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: live-build/build.log
+          retention-days: 7
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: voltaccept-debian13-iso
+          path: live-build/*.iso
+          retention-days: 14
+          compression-level: 0

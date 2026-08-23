@@ -1,0 +1,62 @@
+# ------------------------------------------------------------------
+#  GNOME desktop - minimal core, NOT the full 'gnome' meta-package
+#  (the full 'gnome' package pulls in ~2GB of extra apps we don't want)
+# ------------------------------------------------------------------
+gnome-core
+gnome-session
+gdm3
+
+# ------------------------------------------------------------------
+#  Requested applications
+# ------------------------------------------------------------------
+gnome-terminal
+epiphany-browser
+gnome-text-editor
+gnome-shell-extension-desktop-icons-ng
+gnome-shell-extension-prefs
+
+# ------------------------------------------------------------------
+#  Flatpak (Steam + Modrinth are installed as flatpaks, see
+#  config/hooks/normal/0010-flatpak-apps.hook.chroot - see README)
+# ------------------------------------------------------------------
+flatpak
+xdg-desktop-portal
+xdg-desktop-portal-gnome
+
+# ------------------------------------------------------------------
+#  Internet driver (NetworkManager + common wifi/ethernet firmware)
+# ------------------------------------------------------------------
+network-manager
+network-manager-gnome
+wpasupplicant
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-ralink
+firmware-libertas
+
+# ------------------------------------------------------------------
+#  Audio driver (PipeWire is Debian's default GNOME audio stack)
+# ------------------------------------------------------------------
+pipewire
+pipewire-pulse
+wireplumber
+alsa-utils
+firmware-sof-signed
+
+# ------------------------------------------------------------------
+#  Display / graphics driver (open-source, broad hardware coverage:
+#  Intel, AMD, virtual GPUs. See README for adding NVIDIA proprietary)
+# ------------------------------------------------------------------
+xserver-xorg
+xserver-xorg-video-all
+xserver-xorg-input-all
+mesa-utils
+firmware-misc-nonfree
+firmware-amd-graphics
+
+# ------------------------------------------------------------------
+#  Misc
+# ------------------------------------------------------------------
+sudo

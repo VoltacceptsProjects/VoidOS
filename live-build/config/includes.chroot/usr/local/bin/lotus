@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+# ------------------------------------------------------------------
+#  Lotus
+#  A lightweight, from-scratch terminal system-info tool for xterm
+#  and friends. Inspired by the "fetch" style of tool (neofetch,
+#  screenfetch, etc.) but written independently.
+#
+#  Created by Allen Lambert Jr. (Voltaccept)
+#  https://voltaccept.com
+# ------------------------------------------------------------------
+
+import os
+import platform
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+
+# ---------------------------------------------------------------- #
+#  Colors
+# ---------------------------------------------------------------- #
+
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+
+def c(code):
+    return f"\033[{code}m"
+
+
+# Accent palette used for the logo + labels — a soft "lotus" palette
+# (pink petals, deeper magenta shadow, and a touch of leaf green).
+C1 = c("38;5;218")  # soft pink    - logo main (petals)
+C2 = c("38;5;204")  # rose/magenta - logo shade (petal depth)
+C3 = c("38;5;204")  # darker pink  - labels
+C4 = c("38;5;114")  # lotus green  - accents (stem/leaves)
+
+LOGO_MAIN = C1
+LOGO_SHADE = C2
+
+# ---------------------------------------------------------------- #
+#  The Lotus icon
+# ---------------------------------------------------------------- #
+
+ICON = r"""
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⠟⠹⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⣷⣦⣄⣠⣿⠃⢠⣄⠈⢻⣆⣠⣴⡞⡆⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢀⣀⣀⣿⠀⠈⢻⣇⢀⣾⢟⡄⣸⡿⠋⠀⡇⣇⣀⣀⠀⠀⠀⠀⠀
+⠀⣤⣤⣤⣀⣱⢻⠚⠻⣧⣀⠀⢹⡿⠃⠈⢻⣟⠀⢀⣤⠧⠓⣹⣟⣀⣤⣤⣤⡀
+⠀⠈⠻⣧⠉⠛⣽⠀⠀⠀⠙⣷⡿⠁⠀⠀⠀⢻⣶⠛⠁⠀⠀⡟⠟⠉⣵⡟⠁⠀
+⠀⠀⠀⠹⣧⡀⠏⡇⠀⠀⠀⣿⠁⠀⠀⠀⠀⠀⣿⡄⠀⠀⢠⢷⠀⣼⡟⠀⠀⠀
+⠀⠀⠀⠀⠙⣟⢼⡹⡄⠀⠀⣿⡄⠀⠀⠀⠀⢀⣿⡇⠀⢀⣞⣦⢾⠟⠀⠀⠀⠀
+⠀⠠⢶⣿⣛⠛⢒⣭⢻⣶⣤⣹⣿⣤⣀⣀⣠⣾⣟⣠⣔⡛⢫⣐⠛⢛⣻⣶⠆⠀
+⠀⠀⠀⠉⣻⡽⠛⠉⠁⠀⠉⢙⣿⠖⠒⠛⠻⣿⡋⠉⠁⠈⠉⠙⢿⣿⠉⠀⠀⠀
+⠀⠀⠀⠸⠿⠷⠒⣦⣤⣴⣶⢿⣿⡀⠀⠀⠀⣽⡿⢷⣦⠤⢤⡖⠶⠿⠧⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⢿⣦⣴⡾⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+""".strip("\n").splitlines()
+
+
+def colorize_icon(lines):
+    """Blossom in soft pink/rose on top; the wide scalloped base swoop
+    and everything below it rendered in lotus green, matching the
+    reference mockup (green leafy base under a pink/white flower).
+    On the first (widest) green row, the middle 14 characters are the
+    darker rose/magenta shade instead of green."""
+    leaf_start = len(lines) - 6  # base swoop + bottom curve + stem
+    out = []
+    for i, line in enumerate(lines):
+        petal_color = LOGO_MAIN if i % 3 else LOGO_SHADE
+        if i == leaf_start:
+            width = len(line)
+            mid = 14
+            start = max((width - mid) // 2, 0)
+            end = start + mid
+            colored = (
+                f"{C4}{line[:start]}"
+                f"{C2}{line[start:end]}"
+                f"{C4}{line[end:]}{RESET}"
+            )
+            out.append(colored)
+        elif i > leaf_start:
+            out.append(f"{C4}{line}{RESET}")
+        else:
+            out.append(f"{petal_color}{line}{RESET}")
+    return out
+
+
+# ---------------------------------------------------------------- #
+#  Info gathering helpers
+# ---------------------------------------------------------------- #
+
+def run(cmd):
+    try:
+        return subprocess.check_output(
+            cmd, shell=True, stderr=subprocess.DEVNULL, text=True
+        ).strip()
+    except Exception:
+        return ""
+
+
+def get_user_host():
+    user = os.environ.get("USER") or os.environ.get("USERNAME") or "user"
+    host = socket.gethostname().split(".")[0]
+    return f"{user}@{host}"
+
+
+def get_os():
+    if os.path.exists("/etc/os-release"):
+        info = {}
+        with open("/etc/os-release") as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.strip().split("=", 1)
+                    info[k] = v.strip('"')
+        name = info.get("PRETTY_NAME") or info.get("NAME") or platform.system()
+    else:
+        name = f"{platform.system()} {platform.release()}"
+    arch = platform.machine()
+    return f"{name} {arch}".strip()
+
+
+def get_kernel():
+    return platform.release()
+
+
+def get_uptime():
+    try:
+        with open("/proc/uptime") as f:
+            seconds = float(f.readline().split()[0])
+    except Exception:
+        seconds = time.time() - psutil_boot_fallback()
+
+    days, rem = divmod(int(seconds), 86400)
+    hours, rem = divmod(rem, 3600)
+    mins, _ = divmod(rem, 60)
+
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    parts.append(f"{mins}m")
+    return " ".join(parts)
+
+
+def psutil_boot_fallback():
+    return time.time()
+
+
+def get_packages():
+    managers = {
+        "dpkg-query -f '.\\n' -W": "dpkg",
+        "rpm -qa": "rpm",
+        "pacman -Qq": "pacman",
+        "apk info": "apk",
+        "flatpak list": "flatpak",
+        "brew list": "brew",
+    }
+    counts = []
+    for cmd, label in managers.items():
+        binary = cmd.split()[0]
+        if shutil.which(binary):
+            out = run(cmd)
+            n = len(out.splitlines()) if out else 0
+            if n:
+                counts.append(f"{n} ({label})")
+    return ", ".join(counts) if counts else "N/A"
+
+
+def get_shell():
+    shell_path = os.environ.get("SHELL") or run("getent passwd $(id -u)").split(":")[-1]
+    shell_path = shell_path or "unknown"
+    name = os.path.basename(shell_path.strip()) or "unknown"
+    version = ""
+    if name == "bash":
+        version = run("bash --version").split("\n")[0]
+        version = re.sub(r"^GNU bash, version ([^\s]+).*", r"\1", version)
+    elif name == "zsh":
+        version = run("zsh --version").split()[1] if run("zsh --version") else ""
+    return f"{name} {version}".strip()
+
+
+def get_terminal():
+    return (
+        os.environ.get("TERM_PROGRAM")
+        or os.environ.get("TERM")
+        or "unknown"
+    )
+
+
+def get_resolution():
+    if shutil.which("xrandr"):
+        out = run("xrandr --current")
+        res = re.findall(r"current (\d+) x (\d+)", out)
+        if res:
+            w, h = res[0]
+            return f"{w}x{h}"
+    return "N/A"
+
+
+def get_cpu():
+    if os.path.exists("/proc/cpuinfo"):
+        with open("/proc/cpuinfo") as f:
+            data = f.read()
+        match = re.search(r"model name\s*:\s*(.+)", data)
+        cores = len(re.findall(r"^processor\s*:", data, re.MULTILINE))
+        if match:
+            model = re.sub(r"\s+", " ", match.group(1)).strip()
+            return f"{model} ({cores})"
+    return platform.processor() or "Unknown CPU"
+
+
+def get_gpu():
+    if shutil.which("lspci"):
+        out = run("lspci | grep -iE 'vga|3d|display'")
+        if out:
+            first = out.splitlines()[0]
+            gpu = first.split(":", 2)[-1].strip()
+            return gpu
+    return "N/A"
+
+
+def get_memory():
+    if os.path.exists("/proc/meminfo"):
+        info = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, v = line.split(":")
+                info[k.strip()] = int(v.strip().split()[0])
+        total = info.get("MemTotal", 0) // 1024
+        avail = info.get("MemAvailable", info.get("MemFree", 0)) // 1024
+        used = total - avail
+        return f"{used}MiB / {total}MiB"
+    return "N/A"
+
+
+def build_info_lines():
+    header = get_user_host()
+    underline = "-" * len(header)
+
+    fields = [
+        ("OS", get_os()),
+        ("Kernel", get_kernel()),
+        ("Uptime", get_uptime()),
+        ("Packages", get_packages()),
+        ("Shell", get_shell()),
+        ("Resolution", get_resolution()),
+        ("Terminal", get_terminal()),
+        ("CPU", get_cpu()),
+        ("GPU", get_gpu()),
+        ("Memory", get_memory()),
+    ]
+
+    lines = [f"{C3}{BOLD}{header}{RESET}", f"{C4}{underline}{RESET}"]
+    for label, value in fields:
+        lines.append(f"{C3}{BOLD}{label}{RESET}: {value}")
+
+    # Color swatch row, neofetch-style.
+    swatches = "".join(f"\033[4{i}m   {RESET}" for i in range(8))
+    lines.append("")
+    lines.append(swatches)
+
+    # Signature / credit line.
+    lines.append("")
+    lines.append(f"{C4}Made with {C1}♥{C4} by {C3}{BOLD}Allen Lambert Jr.{RESET} "
+                 f"{C4}({C1}Voltaccept{C4}){RESET}")
+
+    return lines
+
+
+# ---------------------------------------------------------------- #
+#  Rendering
+# ---------------------------------------------------------------- #
+
+ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+def visible_len(s):
+    return len(ANSI_RE.sub("", s))
+
+
+def render(icon_lines, info_lines):
+    gap = "   "
+    logo_width = max(visible_len(l) for l in icon_lines)
+
+    total = max(len(icon_lines), len(info_lines))
+    out = []
+    for i in range(total):
+        logo_part = icon_lines[i] if i < len(icon_lines) else ""
+        pad = logo_width - visible_len(logo_part)
+        info_part = info_lines[i] if i < len(info_lines) else ""
+        out.append(f"{logo_part}{' ' * pad}{gap}{info_part}")
+    return "\n".join(out)
+
+
+def main():
+    icon = colorize_icon(ICON)
+    info = build_info_lines()
+    print()
+    print(render(icon, info))
+    print()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(0)
