@@ -1,7 +1,0 @@
-#!/bin/sh
-# Recompiles the dconf/glib schema cache so the gschema override in
-# usr/share/glib-2.0/schemas/ (default wallpaper + lock screen) is
-# actually picked up at first login.
-set -e
-
-glib-compile-schemas /usr/share/glib-2.0/schemas

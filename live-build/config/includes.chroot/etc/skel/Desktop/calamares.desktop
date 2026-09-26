@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Version=1.0
-Name=Install VoidOS
-Comment=Install VoidOS to your hard disk
-Exec=pkexec calamares
-Icon=calamares
-Terminal=false
-Categories=System;
